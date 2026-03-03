@@ -1,0 +1,14 @@
+# Python / Streamlit
+__pycache__/
+*.pyc
+
+# Local DB & uploads
+afripay.db
+uploads/
+
+# Env secrets
+.env
+
+# OS/Editor
+.DS_Store
+.vscode/
