@@ -1,5 +1,5 @@
 # afripay_app.py
-# AfriPay v1.0 - Paiement pur (Cameroun test)
+# AfriPay v1.1 - Paiement pur (Cameroun test) + Réalité terrain (Agence/Transitaire obligatoire)
 # Streamlit + SQLite, un seul fichier
 #
 # Run:
@@ -22,7 +22,7 @@ DB_PATH = os.environ.get("AFRIPAY_DB_PATH", "afripay.db")
 UPLOAD_DIR = os.environ.get("AFRIPAY_UPLOAD_DIR", "uploads")
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
-# IMPORTANT: En prod, mets un vrai mot de passe via variable d'env AFRIPAY_ADMIN_PASSWORD
+# En prod: mets un vrai mot de passe via variable d'env AFRIPAY_ADMIN_PASSWORD
 ADMIN_PASSWORD_ENV = os.environ.get("AFRIPAY_ADMIN_PASSWORD", "")
 
 # ---------------------------
@@ -67,7 +67,8 @@ def init_db():
         eur_xaf_rate_used REAL NOT NULL,
         total_to_pay_xaf REAL NOT NULL,
 
-        delivery_address TEXT NOT NULL, -- adresse de livraison du client (Cameroun)
+        delivery_address TEXT NOT NULL, -- adresse de livraison saisie (agence/transitaire/contact)
+        delivery_agent TEXT,            -- nom agence/transitaire/contact (obligatoire côté UI)
         client_ack INTEGER NOT NULL,    -- 1 si conditions acceptées
 
         payment_reference TEXT UNIQUE NOT NULL,
@@ -81,6 +82,10 @@ def init_db():
         tracking_url TEXT,
 
         order_status TEXT NOT NULL,     -- created / paid / ordered / shipped / closed
+
+        -- Observations client (data future, optionnel)
+        customs_fees_xaf REAL,
+        customs_notes TEXT,
 
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -104,6 +109,24 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_orders_order_status ON orders(order_status)")
 
     conn.commit()
+    conn.close()
+
+
+def ensure_column(conn, table: str, col: str, coldef: str):
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    existing = [r[1] for r in cur.fetchall()]
+    if col not in existing:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coldef}")
+        conn.commit()
+
+
+def migrate_db():
+    """Safe migrations for existing afripay.db"""
+    conn = db()
+    ensure_column(conn, "orders", "delivery_agent", "TEXT")
+    ensure_column(conn, "orders", "customs_fees_xaf", "REAL")
+    ensure_column(conn, "orders", "customs_notes", "TEXT")
     conn.close()
 
 
@@ -156,7 +179,8 @@ def ensure_defaults():
             "legal_disclaimer",
             "⚠️ AfriPay facilite uniquement le paiement international. "
             "Nous ne sommes pas responsables de la livraison, du transport, des délais, ni des frais de douane. "
-            "La réception du colis et les éventuels frais (douane/taxes) sont à la charge du client."
+            "La réception du colis et les éventuels frais (douane/taxes) sont à la charge du client. "
+            "AfriPay ne reçoit jamais le colis."
         )
 
 
@@ -190,7 +214,6 @@ def get_user_by_phone(phone: str):
 
 
 def _generate_unique_payment_ref(cur) -> str:
-    # retry to avoid rare collisions
     for _ in range(20):
         ref = f"AFR-{secrets.token_hex(4).upper()}"
         cur.execute("SELECT 1 FROM orders WHERE payment_reference=?", (ref,))
@@ -213,6 +236,7 @@ def create_order(
     eur_xaf_rate_used: float,
     total_xaf: float,
     delivery_address: str,
+    delivery_agent: str,
     momo_provider: str,
     client_ack: int,
 ) -> str:
@@ -227,17 +251,17 @@ def create_order(
             site_name, product_url, product_title, product_specs, product_image_path,
             product_price_eur, shipping_estimate_eur, commission_eur, total_to_pay_eur,
             eur_xaf_rate_used, total_to_pay_xaf,
-            delivery_address, client_ack,
+            delivery_address, delivery_agent, client_ack,
             payment_reference, payment_status, momo_provider,
             order_status,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id,
         site_name, product_url, product_title, product_specs, product_image_path,
         price_eur, shipping_eur, commission_eur, total_eur,
         eur_xaf_rate_used, total_xaf,
-        delivery_address, int(client_ack),
+        delivery_address, delivery_agent, int(client_ack),
         ref, "pending", momo_provider,
         "created",
         now, now
@@ -311,7 +335,6 @@ def compute_commission(subtotal_eur: float, percent: float, min_eur: float) -> f
 
 
 def save_upload(file, subfolder: str, prefix: str) -> str:
-    """Save uploaded file under uploads/<subfolder>/ and return path (string)."""
     if file is None:
         return ""
     safe_folder = re.sub(r"[^a-zA-Z0-9_\-]", "_", subfolder)
@@ -336,6 +359,7 @@ def save_upload(file, subfolder: str, prefix: str) -> str:
 st.set_page_config(page_title="AfriPay – Paiement International", layout="wide")
 init_db()
 ensure_defaults()
+migrate_db()
 
 # Session state
 if "auth_phone" not in st.session_state:
@@ -437,7 +461,6 @@ elif tab == "Simuler":
     with colA:
         price_eur = st.number_input("Prix produit (EUR)", min_value=0.0, value=50.0, step=1.0)
         shipping_eur = st.number_input("Livraison estimée (EUR)", min_value=0.0, value=15.0, step=1.0)
-
         subtotal = price_eur + shipping_eur
         commission_eur = compute_commission(subtotal, commission_percent, commission_min_eur)
         total_eur = subtotal + commission_eur
@@ -484,11 +507,18 @@ elif tab == "Créer commande":
         shipping_eur = st.number_input("Frais de livraison du site (EUR)", min_value=0.0, value=0.0, step=1.0)
 
         momo_provider = st.selectbox("Mobile Money", ["MTN", "Orange", "Autre"])
+
+        st.subheader("Livraison (gérée par le client)")
+        delivery_agent = st.text_input(
+            "Agence / Transitaire / Contact utilisé (OBLIGATOIRE)",
+            placeholder="Ex: Agence X (Douala), Transitaire Y, Nom du contact + téléphone..."
+        )
         delivery_address = st.text_area(
-            "Adresse de livraison (Cameroun) (OBLIGATOIRE)",
-            placeholder="Nom complet, quartier, ville, téléphone, indications utiles…",
+            "Adresse exacte à saisir sur le site vendeur (OBLIGATOIRE)",
+            placeholder="Adresse complète (celle de l’agence/transitaire/contact) : nom, quartier, ville, téléphone…",
             height=90
         )
+        st.caption("⚠️ AfriPay ne reçoit jamais le colis. L’adresse saisie doit être celle de votre agence/transitaire/contact.")
 
     subtotal = price_eur + shipping_eur
     commission_eur = compute_commission(subtotal, commission_percent, commission_min_eur)
@@ -509,6 +539,8 @@ elif tab == "Créer commande":
         ack2 = st.checkbox("Je comprends que la livraison, les délais et les frais de douane sont sous ma responsabilité.", value=False)
         ack3 = st.checkbox("Je comprends que la commission AfriPay n’est pas remboursable.", value=False)
         ack4 = st.checkbox("Je confirme que les références saisies (taille/couleur/variante) sont exactes.", value=False)
+        ack5 = st.checkbox("Je comprends que AfriPay ne reçoit jamais le colis.", value=False)
+        ack6 = st.checkbox("Je confirme que l’adresse saisie appartient à mon agence/transitaire/contact et qu’elle est valide.", value=False)
 
         st.info(pay_instructions)
 
@@ -516,12 +548,12 @@ elif tab == "Créer commande":
             product_url.strip().startswith("http")
             and price_eur > 0
             and len(product_specs.strip()) >= 5
+            and len(delivery_agent.strip()) >= 3
             and len(delivery_address.strip()) >= 10
-            and ack1 and ack2 and ack3 and ack4
+            and ack1 and ack2 and ack3 and ack4 and ack5 and ack6
         )
 
         if st.button("Créer la commande", disabled=not can_create):
-            # Save product image if provided
             product_image_path = None
             if product_image is not None:
                 product_image_path = save_upload(product_image, subfolder=f"user_{user_id}", prefix="product")
@@ -540,6 +572,7 @@ elif tab == "Créer commande":
                 eur_xaf_rate_used=float(rate),
                 total_xaf=float(total_xaf),
                 delivery_address=delivery_address.strip(),
+                delivery_agent=delivery_agent.strip(),
                 momo_provider=momo_provider,
                 client_ack=1
             )
@@ -581,7 +614,11 @@ elif tab == "Mes commandes":
                     except Exception:
                         st.write(f"Image produit: {o['product_image_path']}")
 
-                st.write(f"**Adresse livraison :** {o['delivery_address']}")
+                st.divider()
+                st.subheader("Livraison (client)")
+                st.write(f"**Agence/Transitaire/Contact :** {o['delivery_agent'] or '-'}")
+                st.write(f"**Adresse de livraison :** {o['delivery_address']}")
+
                 st.write(
                     f"**Total :** € {money_fmt(o['total_to_pay_eur'])} "
                     f"(≈ {money_fmt(o['total_to_pay_xaf'])} XAF) | "
@@ -638,6 +675,27 @@ elif tab == "Mes commandes":
                     st.write(f"**Tracking :** `{o['tracking_number']}`")
                 if o["tracking_url"]:
                     st.write(f"**Lien tracking :** {o['tracking_url']}")
+
+                st.divider()
+                st.subheader("Observations (optionnel)")
+                st.caption("Ces infos servent à mieux comprendre les coûts/délais pour une future logistique (hub/cargo).")
+                customs_fee = st.number_input(
+                    "Frais de douane payés (XAF) (optionnel)",
+                    min_value=0.0,
+                    value=float(o["customs_fees_xaf"] or 0.0),
+                    step=100.0,
+                    key=f"custfee_{o['id']}"
+                )
+                customs_notes = st.text_area(
+                    "Notes douane / réception (optionnel)",
+                    value=o["customs_notes"] or "",
+                    height=70,
+                    key=f"custnote_{o['id']}"
+                )
+                if st.button("Enregistrer observations", key=f"savecust_{o['id']}"):
+                    update_order(o["id"], customs_fees_xaf=float(customs_fee), customs_notes=customs_notes.strip())
+                    st.success("Observations enregistrées ✅")
+                    st.rerun()
 
                 st.caption(f"Créée: {o['created_at']} | MAJ: {o['updated_at']}")
 
@@ -740,6 +798,10 @@ elif tab == "Admin":
                 st.write(f"**Titre:** {o['product_title']}")
             st.write("**Specs client:**")
             st.code(o["product_specs"])
+
+            st.divider()
+            st.subheader("Livraison (client)")
+            st.write(f"**Agence/Transitaire/Contact:** {o['delivery_agent'] or '-'}")
             st.write(f"**Adresse livraison:** {o['delivery_address']}")
 
             if o["product_image_path"]:
@@ -810,6 +872,12 @@ elif tab == "Admin":
                 update_order(o["id"], **fields)
                 st.success("Mis à jour ✅")
                 st.rerun()
+
+            st.divider()
+            st.subheader("Data douane (observations)")
+            st.write(f"Frais douane (XAF): {money_fmt(float(o['customs_fees_xaf'] or 0.0))}")
+            if o["customs_notes"]:
+                st.write(o["customs_notes"])
 
             st.caption(f"Créée: {o['created_at']} | MAJ: {o['updated_at']}")
 
