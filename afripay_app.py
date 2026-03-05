@@ -1,133 +1,94 @@
 # afripay_app.py
-# AfriPay Afrika — MVP Streamlit (paiement international uniquement)
-# IMPORTANT: AfriPay ne gère PAS la livraison ni le dédouanement. Le client fournit l'adresse agence/transitaire.
-
-from __future__ import annotations
+# AfriPay Afrika — MVP Paiement (Streamlit + SQLite)
+# v1.2 (propre): Connecté + Déconnexion + Admin dashboard + tracking + labels clarifiés
+# DB schema compatible with your current afripay.db tables.
 
 import os
 import re
-import hmac
-import time
 import uuid
+import time
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
 
 import streamlit as st
-
-# bcrypt (admin password hashing)
 import bcrypt
 
-
-# ----------------------------
-# Config UI
-# ----------------------------
-APP_NAME = "AfriPay Afrika"
-TAGLINE = "Pilot Cameroun • Paiement international"
-DISCLAIMER = (
-    "AfriPay facilite uniquement le **paiement international**. "
-    "Nous ne sommes pas responsables de la livraison, du transport, des délais, ni des frais de douane. "
-    "Le client fournit l’adresse de son **agence/transitaire** et gère réception + dédouanement."
-)
-
-LOGO_PATH = os.path.join("assets", "logo.png")
-
 DB_PATH = "afripay.db"
+UPLOAD_DIR = "uploads"
 
-DEFAULT_EUR_XAF = 655.957  # BCE approx (fixe pour MVP)
-DEFAULT_FEE_MODE = "percent"  # "percent" or "fixed"
-DEFAULT_FEE_VALUE = 10.0      # 10%
-
-
-# ----------------------------
-# Helpers: DB
-# ----------------------------
-def db() -> sqlite3.Connection:
+# ---------------------------
+# DB helpers
+# ---------------------------
+def db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-
-def init_db() -> None:
+def init_db():
+    """Create tables if missing (safe with existing DB)."""
     conn = db()
     cur = conn.cursor()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         phone TEXT UNIQUE NOT NULL,
         name TEXT,
         email TEXT,
-        agency_name TEXT NOT NULL,
-        agency_address TEXT NOT NULL,
-        agency_ack INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )
     """)
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS otps (
-        phone TEXT PRIMARY KEY,
-        otp TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        site_name TEXT,
+        product_url TEXT NOT NULL,
+        product_title TEXT,
+        product_specs TEXT NOT NULL,
+        product_image_path TEXT,
+        product_price_eur REAL NOT NULL,
+        shipping_estimate_eur REAL NOT NULL,
+        commission_eur REAL NOT NULL,
+        total_to_pay_eur REAL NOT NULL,
+        eur_xaf_rate_used REAL NOT NULL,
+        total_to_pay_xaf REAL NOT NULL,
+        delivery_address TEXT NOT NULL,
+        client_ack INTEGER NOT NULL,
+        payment_reference TEXT UNIQUE NOT NULL,
+        payment_status TEXT NOT NULL,
+        momo_provider TEXT,
+        momo_tx_id TEXT,
+        payment_proof_path TEXT,
+        purchase_proof_path TEXT,
+        tracking_number TEXT,
+        tracking_url TEXT,
+        order_status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
     )
     """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """)
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-
-        merchant_site TEXT,
-        product_name TEXT,
-        product_url TEXT,
-
-        product_price_eur REAL NOT NULL,
-        seller_shipping_eur REAL NOT NULL DEFAULT 0,
-
-        eur_xaf REAL NOT NULL,
-        fee_mode TEXT NOT NULL,
-        fee_value REAL NOT NULL,
-        afripay_fee_eur REAL NOT NULL,
-        total_eur REAL NOT NULL,
-        total_xaf REAL NOT NULL,
-
-        agency_name TEXT NOT NULL,
-        agency_address TEXT NOT NULL,
-        agency_ack INTEGER NOT NULL DEFAULT 0,
-
-        tracking_code TEXT,
-        notes TEXT,
-
-        FOREIGN KEY(user_id) REFERENCES users(id)
+    CREATE TABLE IF NOT EXISTS admin_auth (
+        id INTEGER PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """)
 
-    # seed settings if missing
-    set_if_missing(cur, "eur_xaf", str(DEFAULT_EUR_XAF))
-    set_if_missing(cur, "fee_mode", DEFAULT_FEE_MODE)
-    set_if_missing(cur, "fee_value", str(DEFAULT_FEE_VALUE))
-
     conn.commit()
     conn.close()
-
-
-def set_if_missing(cur: sqlite3.Cursor, key: str, value: str) -> None:
-    cur.execute("SELECT value FROM settings WHERE key = ?", (key,))
-    row = cur.fetchone()
-    if row is None:
-        cur.execute("INSERT INTO settings(key, value) VALUES(?, ?)", (key, value))
-
 
 def get_setting(key: str, default: str) -> str:
     conn = db()
@@ -137,614 +98,684 @@ def get_setting(key: str, default: str) -> str:
     conn.close()
     return row["value"] if row else default
 
-
-def set_setting(key: str, value: str) -> None:
+def set_setting(key: str, value: str):
     conn = db()
     cur = conn.cursor()
-    cur.execute("INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+    now = datetime.utcnow().isoformat()
+    cur.execute("""
+        INSERT INTO settings(key, value, updated_at)
+        VALUES(?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+    """, (key, value, now))
     conn.commit()
     conn.close()
 
+def ensure_defaults():
+    # Baselines
+    if get_setting("eur_xaf_rate", "") == "":
+        set_setting("eur_xaf_rate", "655.957")
+    if get_setting("commission_mode", "") == "":
+        set_setting("commission_mode", "percent")  # percent / fixed
+    if get_setting("commission_value", "") == "":
+        set_setting("commission_value", "10")  # 10% default
+    if get_setting("momo_payment_instructions", "") == "":
+        set_setting(
+            "momo_payment_instructions",
+            "Paiement Mobile Money : envoyez le montant exact et indiquez la référence de paiement dans le message."
+        )
 
-# ----------------------------
-# Helpers: security / secrets
-# ----------------------------
-def secret_get(path: str, default: Optional[str] = None) -> Optional[str]:
-    """
-    Reads st.secrets in Streamlit Cloud or local .streamlit/secrets.toml.
-    path: "admin.password_hash" or "admin.password_plain"
-    """
+def bcrypt_hash(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def bcrypt_check(plain: str, hashed: str) -> bool:
     try:
-        parts = path.split(".")
-        node: Any = st.secrets
-        for p in parts:
-            node = node[p]
-        return str(node)
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
-        return default
+        return False
 
-
-def verify_admin_password(plain: str) -> bool:
+def ensure_admin():
     """
-    Supports either:
-      - admin.password_hash (bcrypt hash)  [RECOMMENDED]
-      - admin.password_plain (plain)       [only for quick local tests]
+    Ensure admin_auth row exists.
+    Priority:
+      - Streamlit secrets ADMIN_PASSWORD (plain) if provided
+      - Else DEV fallback "ChangeMe123!" (you already changed admin in DB, so this will not overwrite)
     """
-    stored_hash = secret_get("admin.password_hash")
-    stored_plain = secret_get("admin.password_plain")
-
-    if stored_hash:
-        try:
-            return bcrypt.checkpw(plain.encode("utf-8"), stored_hash.encode("utf-8"))
-        except Exception:
-            return False
-
-    if stored_plain:
-        # constant-time compare
-        return hmac.compare_digest(plain, stored_plain)
-
-    # If nothing set, block admin by default
-    return False
-
-
-# ----------------------------
-# OTP (test)
-# ----------------------------
-def generate_otp() -> str:
-    # 6 digits
-    return f"{uuid.uuid4().int % 1_000_000:06d}"
-
-
-def save_otp(phone: str, otp: str, ttl_seconds: int = 180) -> None:
-    expires_at = int(time.time()) + ttl_seconds
     conn = db()
     cur = conn.cursor()
-    cur.execute("INSERT INTO otps(phone, otp, expires_at) VALUES(?, ?, ?) "
-                "ON CONFLICT(phone) DO UPDATE SET otp=excluded.otp, expires_at=excluded.expires_at",
-                (phone, otp, expires_at))
+    row = cur.execute("SELECT password_hash FROM admin_auth WHERE id=1").fetchone()
+    if not row:
+        initial = st.secrets.get("ADMIN_PASSWORD", "ChangeMe123!")
+        cur.execute(
+            "INSERT INTO admin_auth(id, password_hash, updated_at) VALUES(1, ?, ?)",
+            (bcrypt_hash(initial), datetime.utcnow().isoformat())
+        )
+        conn.commit()
+    conn.close()
+
+def admin_verify(pw: str) -> bool:
+    conn = db()
+    cur = conn.cursor()
+    row = cur.execute("SELECT password_hash FROM admin_auth WHERE id=1").fetchone()
+    conn.close()
+    if not row:
+        return False
+    return bcrypt_check(pw, row["password_hash"])
+
+def admin_set_password(new_pw: str):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE admin_auth SET password_hash=?, updated_at=? WHERE id=1",
+        (bcrypt_hash(new_pw), datetime.utcnow().isoformat())
+    )
     conn.commit()
     conn.close()
 
-
-def check_otp(phone: str, otp: str) -> Tuple[bool, str]:
+def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT otp, expires_at FROM otps WHERE phone = ?", (phone,))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
-        return False, "OTP introuvable. Clique sur “Envoyer OTP”."
-    if int(time.time()) > int(row["expires_at"]):
-        return False, "OTP expiré. Renvoie un nouvel OTP."
-    if not hmac.compare_digest(str(row["otp"]), str(otp).strip()):
-        return False, "OTP incorrect."
-    return True, "OK"
-
-
-# ----------------------------
-# Users
-# ----------------------------
-PHONE_RE = re.compile(r"^\+?\d{7,15}$")
-
-
-def upsert_user(
-    phone: str,
-    name: str,
-    email: str,
-    agency_name: str,
-    agency_address: str,
-    agency_ack: bool
-) -> str:
-    uid = get_user_id_by_phone(phone)
     now = datetime.utcnow().isoformat()
 
-    conn = db()
-    cur = conn.cursor()
-
-    if uid is None:
-        uid = str(uuid.uuid4())
-        cur.execute("""
-            INSERT INTO users(id, phone, name, email, agency_name, agency_address, agency_ack, created_at)
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-        """, (uid, phone, name or None, email or None, agency_name, agency_address, int(bool(agency_ack)), now))
+    row = cur.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone()
+    if row:
+        user_id = row["id"]
+        cur.execute("UPDATE users SET name=?, email=? WHERE id=?", (name, email, user_id))
     else:
-        cur.execute("""
-            UPDATE users
-            SET name=?, email=?, agency_name=?, agency_address=?, agency_ack=?
-            WHERE id=?
-        """, (name or None, email or None, agency_name, agency_address, int(bool(agency_ack)), uid))
+        cur.execute(
+            "INSERT INTO users(phone, name, email, created_at) VALUES(?, ?, ?, ?)",
+            (phone, name, email, now)
+        )
+        user_id = cur.lastrowid
 
     conn.commit()
     conn.close()
-    return uid
+    return int(user_id)
 
-
-def get_user_id_by_phone(phone: str) -> Optional[str]:
+def get_user_by_phone(phone: str):
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT id FROM users WHERE phone = ?", (phone,))
-    row = cur.fetchone()
-    conn.close()
-    return row["id"] if row else None
-
-
-def get_user(uid: str) -> Optional[sqlite3.Row]:
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE id = ?", (uid,))
-    row = cur.fetchone()
+    row = cur.execute("SELECT * FROM users WHERE phone=?", (phone,)).fetchone()
     conn.close()
     return row
 
-
-# ----------------------------
-# Orders
-# ----------------------------
-def compute_fees(product_eur: float, seller_ship_eur: float, fee_mode: str, fee_value: float) -> Tuple[float, float]:
-    base = max(product_eur, 0.0) + max(seller_ship_eur, 0.0)
-    if fee_mode == "fixed":
-        afripay_fee = max(fee_value, 0.0)
-    else:
-        afripay_fee = base * max(fee_value, 0.0) / 100.0
-    total = base + afripay_fee
-    return afripay_fee, total
-
-
-def create_order(payload: Dict[str, Any]) -> str:
-    oid = str(uuid.uuid4())
+def create_order(
+    user_id: int,
+    site_name: str,
+    product_url: str,
+    product_title: str,
+    product_specs: str,
+    product_price_eur: float,
+    vendor_fee_eur: float,              # stored in shipping_estimate_eur
+    commission_eur: float,
+    total_eur: float,
+    eur_xaf_rate_used: float,
+    total_xaf: float,
+    delivery_address: str,              # agency / transitaire address
+    client_ack: int,
+    momo_provider: str,
+    momo_tx_id: str | None,
+    payment_proof_path: str | None,
+    purchase_proof_path: str | None,
+) -> str:
     conn = db()
     cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    ref = f"AFR-{uuid.uuid4().hex[:8].upper()}"
 
     cur.execute("""
         INSERT INTO orders(
-            id, user_id, created_at, status,
-            merchant_site, product_name, product_url,
-            product_price_eur, seller_shipping_eur,
-            eur_xaf, fee_mode, fee_value, afripay_fee_eur, total_eur, total_xaf,
-            agency_name, agency_address, agency_ack,
-            tracking_code, notes
-        )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            user_id, site_name, product_url, product_title, product_specs, product_image_path,
+            product_price_eur, shipping_estimate_eur, commission_eur, total_to_pay_eur,
+            eur_xaf_rate_used, total_to_pay_xaf,
+            delivery_address, client_ack,
+            payment_reference, payment_status,
+            momo_provider, momo_tx_id,
+            payment_proof_path, purchase_proof_path,
+            tracking_number, tracking_url,
+            order_status, created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,
+                  ?,?,?,?,
+                  ?,?,
+                  ?,?,
+                  ?,?,
+                  ?,?,
+                  ?,?,
+                  ?,?,
+                  ?,?,?)
     """, (
-        oid,
-        payload["user_id"],
-        datetime.utcnow().isoformat(),
-        "CREATED",
-        payload.get("merchant_site"),
-        payload.get("product_name"),
-        payload.get("product_url"),
-        float(payload["product_price_eur"]),
-        float(payload.get("seller_shipping_eur", 0.0)),
-        float(payload["eur_xaf"]),
-        payload["fee_mode"],
-        float(payload["fee_value"]),
-        float(payload["afripay_fee_eur"]),
-        float(payload["total_eur"]),
-        float(payload["total_xaf"]),
-        payload["agency_name"],
-        payload["agency_address"],
-        int(bool(payload["agency_ack"])),
-        payload.get("tracking_code"),
-        payload.get("notes")
+        user_id, site_name, product_url, product_title, product_specs, None,
+        product_price_eur, vendor_fee_eur, commission_eur, total_eur,
+        eur_xaf_rate_used, total_xaf,
+        delivery_address, client_ack,
+        ref, "pending",
+        momo_provider, momo_tx_id,
+        payment_proof_path, purchase_proof_path,
+        None, None,
+        "created", now, now
     ))
 
     conn.commit()
     conn.close()
-    return oid
+    return ref
 
-
-def list_orders_for_user(uid: str) -> list[sqlite3.Row]:
+def list_orders_for_user(user_id: int):
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC", (uid,))
-    rows = cur.fetchall()
+    rows = cur.execute("""
+        SELECT * FROM orders
+        WHERE user_id=?
+        ORDER BY id DESC
+    """, (user_id,)).fetchall()
     conn.close()
-    return list(rows)
+    return rows
 
+def list_all_orders(limit: int = 300):
+    conn = db()
+    cur = conn.cursor()
+    rows = cur.execute("""
+        SELECT o.*, u.phone AS user_phone, u.name AS user_name
+        FROM orders o
+        JOIN users u ON u.id = o.user_id
+        ORDER BY o.id DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return rows
 
-# ----------------------------
-# UI Helpers
-# ----------------------------
-def money_eur(x: float) -> str:
-    return f"€ {x:,.2f}".replace(",", " ").replace(".", ",")
+def update_order(order_id: int, **fields):
+    if not fields:
+        return
+    conn = db()
+    cur = conn.cursor()
+    fields["updated_at"] = datetime.utcnow().isoformat()
+    cols = ", ".join([f"{k}=?" for k in fields.keys()])
+    vals = list(fields.values()) + [order_id]
+    cur.execute(f"UPDATE orders SET {cols} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
 
+# ---------------------------
+# Utils
+# ---------------------------
+def valid_phone(phone: str) -> bool:
+    p = phone.strip().replace(" ", "")
+    return bool(re.fullmatch(r"(\+?\d{8,15})", p))
 
-def money_xaf(x: float) -> str:
-    return f"{x:,.0f} XAF".replace(",", " ").replace(".", ",")
+def money_fmt(x: float) -> str:
+    return f"{x:,.2f}"
 
+def eur_to_xaf(eur: float, rate: float) -> float:
+    return eur * rate
 
-def ensure_session_defaults() -> None:
-    st.session_state.setdefault("user_id", None)
-    st.session_state.setdefault("user_phone", None)
-    st.session_state.setdefault("user_logged", False)
+def compute_commission(subtotal_eur: float, mode: str, value: float) -> float:
+    if mode == "fixed":
+        return float(max(value, 0.0))
+    return float(max(subtotal_eur * (value / 100.0), 0.0))
 
-    st.session_state.setdefault("admin_logged", False)
+def ensure_upload_dir():
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+def save_upload(file, prefix: str) -> str | None:
+    if not file:
+        return None
+    ensure_upload_dir()
+    ext = os.path.splitext(file.name)[1].lower()
+    safe_name = f"{prefix}_{uuid.uuid4().hex}{ext}"
+    path = os.path.join(UPLOAD_DIR, safe_name)
+    with open(path, "wb") as f:
+        f.write(file.getbuffer())
+    return path
 
-def sidebar_header() -> None:
-    st.sidebar.markdown(f"## {APP_NAME}")
-    st.sidebar.caption(TAGLINE)
-    st.sidebar.markdown("---")
+# ---------------------------
+# Session init
+# ---------------------------
+def init_session():
+    if "auth_phone" not in st.session_state:
+        st.session_state.auth_phone = None
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = None
+    if "otp_code" not in st.session_state:
+        st.session_state.otp_code = None
+    if "otp_expires_at" not in st.session_state:
+        st.session_state.otp_expires_at = None
+    if "is_admin" not in st.session_state:
+        st.session_state.is_admin = False
 
+def logout_user():
+    st.session_state.auth_phone = None
+    st.session_state.user_id = None
+    st.session_state.otp_code = None
+    st.session_state.otp_expires_at = None
 
-def show_logo_header() -> None:
-    c1, c2 = st.columns([1, 2], vertical_alignment="center")
-    with c1:
-        if os.path.exists(LOGO_PATH):
-            st.image(LOGO_PATH, use_container_width=True)
-        else:
-            st.write("🟦")
-    with c2:
-        st.markdown(f"# {APP_NAME}")
-        st.caption("Facilitateur de paiement international — Phase pilote (Cameroun)")
+# ---------------------------
+# App
+# ---------------------------
+st.set_page_config(page_title="AfriPay Afrika", layout="wide")
+init_db()
+ensure_defaults()
+ensure_admin()
+init_session()
 
+# Settings
+rate = float(get_setting("eur_xaf_rate", "655.957"))
+commission_mode = get_setting("commission_mode", "percent")
+commission_value = float(get_setting("commission_value", "10"))
+pay_instructions = get_setting("momo_payment_instructions", "")
 
-# ----------------------------
-# Pages
-# ----------------------------
-def page_connexion() -> None:
-    show_logo_header()
-    st.info(DISCLAIMER)
+# Sidebar branding + status
+st.sidebar.title("AfriPay Afrika")
+st.sidebar.caption("MVP — Facilitateur de paiement international (Phase pilote)")
 
-    st.markdown("## Connexion")
-    st.caption("Connexion par téléphone (OTP de test affiché).")
+if st.session_state.auth_phone:
+    st.sidebar.success(f"Connecté ✅\n\n{st.session_state.auth_phone}")
+    if st.sidebar.button("Se déconnecter"):
+        logout_user()
+        st.rerun()
+else:
+    st.sidebar.info("Non connecté")
 
-    left, right = st.columns([1.2, 1], vertical_alignment="top")
+tabs = ["Connexion", "Simuler", "Créer commande", "Mes commandes", "Admin"]
+tab = st.sidebar.radio("Menu", tabs, index=0)
 
-    with left:
-        phone = st.text_input("Téléphone (ex: +2376xxxxxxx)", value=st.session_state.get("user_phone") or "", placeholder="+2376...")
+# Logo (optional)
+logo_path = os.path.join("assets", "logo.png")
+if os.path.exists(logo_path):
+    st.image(logo_path, width=160)
+
+st.info(
+    "📌 **Transparence** : AfriPay facilite uniquement le **paiement**. "
+    "Le client fournit l’adresse de son **agence/transitaire** et gère livraison + dédouanement. "
+    "**AfriPay ne reçoit jamais le colis.**"
+)
+
+# ---------------------------
+# Connexion
+# ---------------------------
+if tab == "Connexion":
+    st.header("Connexion")
+
+    col1, col2 = st.columns([1, 1], gap="large")
+
+    with col1:
+        st.subheader("1) Demander OTP (mode test)")
+        phone = st.text_input("Téléphone (ex: +2376xxxxxxx)", placeholder="+2376...")
         name = st.text_input("Nom (optionnel)")
         email = st.text_input("Email (optionnel)")
 
-        st.markdown("### Adresse agence / transitaire (obligatoire)")
-        agency_name = st.text_input("Nom de l’agence / transitaire", placeholder="Ex: DHL Express Douala / Transitaire XYZ")
-        agency_address = st.text_area(
-            "Adresse exacte de livraison (celle fournie par l’agence/transitaire)",
-            placeholder="Ex: Rue…, Quartier…, Ville…, Téléphone…, Référence…",
-            height=90
-        )
-
-        agency_ack = st.checkbox(
-            "Je confirme que cette adresse est valide et que je gère la livraison et le dédouanement. "
-            "AfriPay ne reçoit jamais le colis.",
-            value=False
-        )
-
-        col_a, col_b = st.columns([1, 1])
-        with col_a:
-            send = st.button("Envoyer OTP", use_container_width=True)
-        with col_b:
-            st.write("")
-
-        otp_display = None
-
-        if send:
-            phone_clean = phone.strip()
-            if not PHONE_RE.match(phone_clean):
-                st.error("Numéro invalide. Format recommandé: +2376xxxxxxx")
-            elif not agency_name.strip() or not agency_address.strip():
-                st.error("L’agence/transitaire + l’adresse exacte sont obligatoires.")
-            elif not agency_ack:
-                st.error("La confirmation livraison + dédouanement est obligatoire.")
+        if st.button("Envoyer OTP"):
+            if not valid_phone(phone):
+                st.error("Numéro invalide. Format: +2376xxxxxxx ou chiffres (8–15).")
             else:
-                otp = generate_otp()
-                save_otp(phone_clean, otp, ttl_seconds=180)
-                st.session_state["user_phone"] = phone_clean
-                otp_display = otp
-                st.success("OTP envoyé (test).")
+                otp = str(100000 + int(uuid.uuid4().int % 900000))  # 6 digits
+                st.session_state.otp_code = otp
+                st.session_state.otp_expires_at = time.time() + 180  # 3 minutes
+                # Upsert user now
+                user_id = upsert_user(phone.strip(), name.strip(), email.strip())
+                st.session_state.user_id = user_id
 
-        if otp_display:
-            st.warning(f"OTP de test: **{otp_display}** (expire en 3 min)")
+                st.success("OTP généré (mode test). Expire dans 3 minutes.")
+                st.info(f"OTP (test) : **{otp}**")
 
-    with right:
-        st.markdown("### Valider l'OTP")
-        otp_in = st.text_input("Entrer OTP", placeholder="123456")
-        login = st.button("Se connecter", use_container_width=True)
-
-        if login:
-            phone_clean = (phone or "").strip()
-            if not PHONE_RE.match(phone_clean):
-                st.error("Numéro invalide.")
-            elif not otp_in.strip():
-                st.error("Entre l’OTP.")
+    with col2:
+        st.subheader("2) Valider OTP")
+        otp_in = st.text_input("Entrer OTP", max_chars=6)
+        if st.button("Se connecter"):
+            if not st.session_state.otp_code:
+                st.error("Veuillez d'abord demander un OTP.")
+            elif time.time() > float(st.session_state.otp_expires_at or 0):
+                st.error("OTP expiré. Veuillez renvoyer un OTP.")
+                st.session_state.otp_code = None
+                st.session_state.otp_expires_at = None
+            elif otp_in.strip() != st.session_state.otp_code:
+                st.error("OTP incorrect.")
             else:
-                ok, msg = check_otp(phone_clean, otp_in.strip())
-                if not ok:
-                    st.error(msg)
-                else:
-                    # enforce address fields again
-                    if not agency_name.strip() or not agency_address.strip():
-                        st.error("L’agence/transitaire + l’adresse exacte sont obligatoires.")
-                        return
-                    if not agency_ack:
-                        st.error("La confirmation livraison + dédouanement est obligatoire.")
-                        return
+                st.session_state.auth_phone = phone.strip()
+                # Ensure user exists and get ID
+                u = get_user_by_phone(st.session_state.auth_phone)
+                st.session_state.user_id = int(u["id"])
+                st.session_state.otp_code = None
+                st.session_state.otp_expires_at = None
+                st.success("Connecté ✅")
+                st.rerun()
 
-                    uid = upsert_user(
-                        phone=phone_clean,
-                        name=name.strip(),
-                        email=email.strip(),
-                        agency_name=agency_name.strip(),
-                        agency_address=agency_address.strip(),
-                        agency_ack=agency_ack
-                    )
-                    st.session_state["user_id"] = uid
-                    st.session_state["user_logged"] = True
-                    st.success("Connecté ✅")
+    st.divider()
+    st.subheader("Statut session")
+    if st.session_state.auth_phone:
+        u = get_user_by_phone(st.session_state.auth_phone)
+        st.write(f"Connecté en tant que : **{u['phone']}**  ({u['name'] or 'sans nom'})")
+    else:
+        st.write("Non connecté.")
 
-                    # refresh app state
-                    st.rerun()
+# ---------------------------
+# Simuler
+# ---------------------------
+elif tab == "Simuler":
+    st.header("Simulation du coût total")
+    st.caption("Prix produit + **frais vendeur (site)** + **frais de service AfriPay**.")
 
+    colA, colB = st.columns([1, 1], gap="large")
 
-def page_simuler() -> None:
-    show_logo_header()
-    st.info(DISCLAIMER)
-
-    st.markdown("## Simulation du coût total")
-    st.caption("Le client paie : prix produit + frais vendeur (si applicable) + frais de service AfriPay.")
-
-    eur_xaf = float(get_setting("eur_xaf", str(DEFAULT_EUR_XAF)))
-    fee_mode = get_setting("fee_mode", DEFAULT_FEE_MODE)
-    fee_value = float(get_setting("fee_value", str(DEFAULT_FEE_VALUE)))
-
-    left, right = st.columns([1.2, 1], vertical_alignment="top")
-
-    with left:
-        product = st.number_input("Prix du produit (EUR)", min_value=0.0, value=50.0, step=1.0, format="%.2f")
-        seller_ship = st.number_input(
-            "Frais du vendeur (livraison du site) — optionnel (EUR)",
-            min_value=0.0, value=15.0, step=1.0, format="%.2f",
-            help="Ex: frais de livraison facturés par Amazon/Shein/Alibaba. Ce n’est PAS une livraison AfriPay."
+    with colA:
+        price_eur = st.number_input("Prix du produit (EUR)", min_value=0.0, value=50.0, step=1.0)
+        vendor_fee_eur = st.number_input(
+            "Frais vendeur (site) (EUR)",
+            min_value=0.0, value=15.0, step=1.0,
+            help="Ex : frais appliqués par Amazon/Shein/Temu (livraison du site, taxes du site, etc.)."
         )
 
-    afripay_fee, total_eur = compute_fees(product, seller_ship, fee_mode, fee_value)
-    total_xaf = total_eur * eur_xaf
+        subtotal = price_eur + vendor_fee_eur
+        afripay_fee = compute_commission(subtotal, commission_mode, commission_value)
+        total_eur = subtotal + afripay_fee
 
-    with right:
-        st.markdown("### Résumé")
-        st.write(f"Taux EUR → XAF : **{eur_xaf:,.3f}**".replace(",", " ").replace(".", ","))
-        st.write(f"Produit : **{money_eur(product)}** (≈ {money_xaf(product*eur_xaf)})")
-        st.write(f"Frais vendeur (livraison du site) : **{money_eur(seller_ship)}** (≈ {money_xaf(seller_ship*eur_xaf)})")
+    with colB:
+        st.subheader("Résumé")
+        st.write(f"Taux EUR → XAF : **{rate:.3f}**")
+        st.write(f"Produit : **€ {money_fmt(price_eur)}** (≈ {money_fmt(eur_to_xaf(price_eur, rate))} XAF)")
+        st.write(f"Frais vendeur (site) : **€ {money_fmt(vendor_fee_eur)}** (≈ {money_fmt(eur_to_xaf(vendor_fee_eur, rate))} XAF)")
 
-        if fee_mode == "fixed":
-            st.write(f"Frais de service AfriPay (fixe) : **{money_eur(afripay_fee)}** (≈ {money_xaf(afripay_fee*eur_xaf)})")
+        if commission_mode == "percent":
+            st.write(f"Frais de service AfriPay ({commission_value:.2f}%) : **€ {money_fmt(afripay_fee)}** (≈ {money_fmt(eur_to_xaf(afripay_fee, rate))} XAF)")
         else:
-            st.write(f"Frais de service AfriPay ({fee_value:.2f}%) : **{money_eur(afripay_fee)}** (≈ {money_xaf(afripay_fee*eur_xaf)})")
+            st.write(f"Frais de service AfriPay (fixe) : **€ {money_fmt(afripay_fee)}** (≈ {money_fmt(eur_to_xaf(afripay_fee, rate))} XAF)")
 
-        st.success(f"Total à payer : {money_eur(total_eur)} (≈ {money_xaf(total_xaf)})")
+        st.success(f"Total à payer : **€ {money_fmt(total_eur)}** (≈ **{money_fmt(eur_to_xaf(total_eur, rate))} XAF**)")
+        st.info(pay_instructions)
 
+# ---------------------------
+# Créer commande
+# ---------------------------
+elif tab == "Créer commande":
+    st.header("Créer une commande")
 
-def page_creer_commande() -> None:
-    show_logo_header()
-    st.info(DISCLAIMER)
-
-    st.markdown("## Créer une commande")
-
-    if not st.session_state.get("user_logged"):
+    if not st.session_state.auth_phone:
         st.warning("Veuillez d'abord vous connecter (onglet Connexion).")
-        return
+        st.stop()
 
-    user = get_user(st.session_state["user_id"])
-    if not user:
-        st.error("Utilisateur introuvable. Reconnecte-toi.")
-        return
+    user = get_user_by_phone(st.session_state.auth_phone)
+    user_id = int(user["id"])
 
-    eur_xaf = float(get_setting("eur_xaf", str(DEFAULT_EUR_XAF)))
-    fee_mode = get_setting("fee_mode", DEFAULT_FEE_MODE)
-    fee_value = float(get_setting("fee_value", str(DEFAULT_FEE_VALUE)))
+    col1, col2 = st.columns([1, 1], gap="large")
 
-    st.markdown("### Détails produit")
-    c1, c2 = st.columns([1, 1], vertical_alignment="top")
+    with col1:
+        site_name = st.selectbox("Site marchand", ["Amazon", "Shein", "Temu", "AliExpress", "Autre"])
+        product_url = st.text_input("Lien du produit", placeholder="https://...")
+        product_title = st.text_input("Titre du produit (optionnel)")
+        product_specs = st.text_area("Référence / Détails (obligatoire)", placeholder="Couleur, taille, modèle, SKU, etc.")
+        price_eur = st.number_input("Prix du produit (EUR)", min_value=0.0, value=0.0, step=1.0)
+        vendor_fee_eur = st.number_input("Frais vendeur (site) (EUR)", min_value=0.0, value=0.0, step=1.0)
 
-    with c1:
-        merchant_site = st.text_input("Site marchand (optionnel)", placeholder="Amazon / Shein / AliExpress / …")
-        product_name = st.text_input("Nom du produit (optionnel)", placeholder="Ex: Smartphone, chaussures, …")
-        product_url = st.text_input("Lien produit (optionnel)", placeholder="https://...")
-
-    with c2:
-        product_price = st.number_input("Prix produit (EUR)", min_value=0.0, value=0.0, step=1.0, format="%.2f")
-        seller_ship = st.number_input(
-            "Frais vendeur (livraison du site) — optionnel (EUR)",
-            min_value=0.0, value=0.0, step=1.0, format="%.2f",
-            help="Ex: frais de livraison facturés par le site. Ce n’est PAS une livraison AfriPay."
+        st.subheader("Adresse agence / transitaire (obligatoire)")
+        delivery_address = st.text_area(
+            "Adresse complète (celle que le client mettra sur Amazon/Shein/Temu)",
+            placeholder="Nom agence/transitaire, ville, quartier, rue, repères, téléphone..."
         )
 
-    st.markdown("### Adresse agence / transitaire (obligatoire)")
-    st.caption("Cette adresse est celle que le client met aussi sur Amazon/Shein/Alibaba pour la livraison.")
+        client_ack = st.checkbox("Je confirme que cette adresse est valide et que je gère livraison + dédouanement.")
 
-    agency_name = st.text_input("Nom de l’agence / transitaire", value=str(user["agency_name"] or ""))
-    agency_address = st.text_area("Adresse exacte de livraison", value=str(user["agency_address"] or ""), height=100)
+        momo_provider = st.selectbox("Mobile Money", ["MTN", "Orange", "Autre"])
+        momo_tx_id = st.text_input("Référence / TX ID Mobile Money (optionnel)", placeholder="Si le client a déjà payé")
 
-    agency_ack = st.checkbox(
-        "Je confirme que cette adresse est valide et que je gère la livraison et le dédouanement. AfriPay ne reçoit jamais le colis.",
-        value=bool(user["agency_ack"])
-    )
+        st.subheader("Preuves (optionnel)")
+        payment_proof = st.file_uploader("Preuve de paiement (image/pdf)", type=["png", "jpg", "jpeg", "pdf"])
+        purchase_proof = st.file_uploader("Preuve d'achat / facture (image/pdf)", type=["png", "jpg", "jpeg", "pdf"])
 
-    st.markdown("### Tracking (optionnel)")
-    tracking_code = st.text_input("Code de tracking (si déjà disponible)", placeholder="Ex: 1Z..., LP..., ...")
-    notes = st.text_area("Notes (optionnel)", placeholder="Tout détail utile pour le suivi…", height=80)
+    subtotal = price_eur + vendor_fee_eur
+    afripay_fee = compute_commission(subtotal, commission_mode, commission_value)
+    total_eur = subtotal + afripay_fee
+    total_xaf = eur_to_xaf(total_eur, rate)
 
-    afripay_fee, total_eur = compute_fees(product_price, seller_ship, fee_mode, fee_value)
-    total_xaf = total_eur * eur_xaf
+    with col2:
+        st.subheader("Total & instructions")
+        st.write(f"Taux EUR → XAF : **{rate:.3f}**")
+        st.write(f"Produit : € {money_fmt(price_eur)}  |  ≈ {money_fmt(eur_to_xaf(price_eur, rate))} XAF")
+        st.write(f"Frais vendeur (site) : € {money_fmt(vendor_fee_eur)}  |  ≈ {money_fmt(eur_to_xaf(vendor_fee_eur, rate))} XAF")
+        st.write(f"Frais de service AfriPay : € {money_fmt(afripay_fee)}  |  ≈ {money_fmt(eur_to_xaf(afripay_fee, rate))} XAF")
+        st.success(f"Total à payer : **€ {money_fmt(total_eur)}** (≈ **{money_fmt(total_xaf)} XAF**)")
+        st.info(pay_instructions)
 
-    st.markdown("### Résumé paiement")
-    st.write(f"Frais de service AfriPay : **{money_eur(afripay_fee)}**")
-    st.success(f"Total à payer : {money_eur(total_eur)} (≈ {money_xaf(total_xaf)})")
+        if st.button("Créer la commande"):
+            if not product_url.strip().startswith("http"):
+                st.error("Veuillez saisir un lien valide (http/https).")
+            elif price_eur <= 0:
+                st.error("Veuillez saisir un prix produit > 0.")
+            elif not product_specs.strip():
+                st.error("Veuillez renseigner les références / détails du produit (obligatoire).")
+            elif not delivery_address.strip():
+                st.error("Adresse agence/transitaire obligatoire.")
+            elif not client_ack:
+                st.error("Veuillez confirmer que vous gérez livraison + dédouanement.")
+            else:
+                payment_proof_path = save_upload(payment_proof, "payment") if payment_proof else None
+                purchase_proof_path = save_upload(purchase_proof, "purchase") if purchase_proof else None
 
-    st.markdown("---")
-    confirm = st.checkbox("Je confirme que je paie uniquement un service de paiement AfriPay (pas la livraison).", value=False)
+                ref = create_order(
+                    user_id=user_id,
+                    site_name=site_name,
+                    product_url=product_url.strip(),
+                    product_title=product_title.strip(),
+                    product_specs=product_specs.strip(),
+                    product_price_eur=float(price_eur),
+                    vendor_fee_eur=float(vendor_fee_eur),
+                    commission_eur=float(afripay_fee),
+                    total_eur=float(total_eur),
+                    eur_xaf_rate_used=float(rate),
+                    total_xaf=float(total_xaf),
+                    delivery_address=delivery_address.strip(),
+                    client_ack=1,
+                    momo_provider=momo_provider,
+                    momo_tx_id=momo_tx_id.strip() or None,
+                    payment_proof_path=payment_proof_path,
+                    purchase_proof_path=purchase_proof_path,
+                )
 
-    if st.button("Créer la commande", use_container_width=True):
-        if not agency_name.strip() or not agency_address.strip():
-            st.error("L’agence/transitaire + l’adresse exacte sont obligatoires.")
-            return
-        if not agency_ack:
-            st.error("La confirmation livraison + dédouanement est obligatoire.")
-            return
-        if not confirm:
-            st.error("La confirmation du service AfriPay est obligatoire.")
-            return
-        if product_price <= 0:
-            st.error("Le prix produit doit être > 0.")
-            return
+                st.success("Commande créée ✅")
+                st.write("Référence de paiement (à mettre dans le message Mobile Money) :")
+                st.code(ref)
+                st.info("Tracking : il sera ajouté par l’Admin quand disponible (site marchand / transitaire).")
 
-        # update user profile with latest address/ack
-        upsert_user(
-            phone=str(user["phone"]),
-            name=str(user["name"] or ""),
-            email=str(user["email"] or ""),
-            agency_name=agency_name.strip(),
-            agency_address=agency_address.strip(),
-            agency_ack=agency_ack
-        )
+# ---------------------------
+# Mes commandes
+# ---------------------------
+elif tab == "Mes commandes":
+    st.header("Mes commandes")
 
-        oid = create_order({
-            "user_id": st.session_state["user_id"],
-            "merchant_site": merchant_site.strip() or None,
-            "product_name": product_name.strip() or None,
-            "product_url": product_url.strip() or None,
-            "product_price_eur": float(product_price),
-            "seller_shipping_eur": float(seller_ship),
-            "eur_xaf": float(eur_xaf),
-            "fee_mode": fee_mode,
-            "fee_value": float(fee_value),
-            "afripay_fee_eur": float(afripay_fee),
-            "total_eur": float(total_eur),
-            "total_xaf": float(total_xaf),
-            "agency_name": agency_name.strip(),
-            "agency_address": agency_address.strip(),
-            "agency_ack": bool(agency_ack),
-            "tracking_code": tracking_code.strip() or None,
-            "notes": notes.strip() or None
-        })
-
-        st.success(f"Commande créée ✅ ID: {oid}")
-        st.balloons()
-
-
-def page_mes_commandes() -> None:
-    show_logo_header()
-    st.info(DISCLAIMER)
-
-    st.markdown("## Mes commandes")
-
-    if not st.session_state.get("user_logged"):
+    if not st.session_state.auth_phone:
         st.warning("Veuillez d'abord vous connecter.")
-        return
+        st.stop()
 
-    orders = list_orders_for_user(st.session_state["user_id"])
+    user = get_user_by_phone(st.session_state.auth_phone)
+    user_id = int(user["id"])
+    orders = list_orders_for_user(user_id)
+
     if not orders:
         st.info("Aucune commande pour le moment.")
-        return
+    else:
+        for o in orders:
+            st.subheader(f"Commande #{o['id']} — {o['order_status'].upper()} / Paiement: {o['payment_status'].upper()}")
+            st.write(f"**Référence paiement :** `{o['payment_reference']}`")
+            st.write(f"**Site :** {o['site_name'] or '-'}")
+            st.write(f"**Lien :** {o['product_url']}")
+            if o["product_title"]:
+                st.write(f"**Produit :** {o['product_title']}")
+            st.write(f"**Références / détails :** {o['product_specs']}")
+            st.write(f"**Adresse agence/transitaire :** {o['delivery_address']}")
 
-    for o in orders:
-        with st.expander(f"Commande {o['id']} • {o['status']} • {o['created_at']}", expanded=False):
-            st.write(f"Site: {o['merchant_site'] or '-'}")
-            st.write(f"Produit: {o['product_name'] or '-'}")
-            if o["product_url"]:
-                st.write(f"Lien: {o['product_url']}")
-            st.write(f"Prix produit: **{money_eur(o['product_price_eur'])}**")
-            st.write(f"Frais vendeur (site): **{money_eur(o['seller_shipping_eur'])}**")
-            st.write(f"Frais de service AfriPay: **{money_eur(o['afripay_fee_eur'])}**")
-            st.success(f"Total: {money_eur(o['total_eur'])} (≈ {money_xaf(o['total_xaf'])})")
+            st.write(
+                f"**Total :** € {money_fmt(o['total_to_pay_eur'])} "
+                f"(≈ {money_fmt(o['total_to_pay_xaf'])} XAF)"
+            )
 
-            st.markdown("**Adresse agence/transitaire**")
-            st.write(o["agency_name"])
-            st.write(o["agency_address"])
+            # Tracking block
+            if o["tracking_number"] or o["tracking_url"]:
+                st.markdown("**Tracking :**")
+                if o["tracking_number"]:
+                    st.code(o["tracking_number"])
+                if o["tracking_url"]:
+                    st.write(o["tracking_url"])
+            else:
+                st.caption("Tracking non renseigné (sera ajouté par l’Admin).")
 
-            if o["tracking_code"]:
-                st.write(f"Tracking: {o['tracking_code']}")
-            if o["notes"]:
-                st.write(f"Notes: {o['notes']}")
+            st.caption(f"Créée: {o['created_at']} | MAJ: {o['updated_at']}")
+            st.divider()
 
+# ---------------------------
+# Admin
+# ---------------------------
+elif tab == "Admin":
+    st.header("Admin")
 
-def page_admin() -> None:
-    show_logo_header()
-    st.info(DISCLAIMER)
-
-    st.markdown("## Admin")
-
-    if not st.session_state.get("admin_logged"):
-        pwd = st.text_input("Mot de passe admin", type="password")
+    if not st.session_state.is_admin:
+        pw = st.text_input("Mot de passe admin", type="password")
         if st.button("Se connecter (admin)"):
-            if verify_admin_password(pwd):
-                st.session_state["admin_logged"] = True
+            if admin_verify(pw):
+                st.session_state.is_admin = True
                 st.success("Admin connecté ✅")
                 st.rerun()
             else:
-                st.error("Mot de passe incorrect (ou secret non configuré).")
-        st.caption("Conseil: configure le mot de passe admin dans `.streamlit/secrets.toml`.")
-        return
+                st.error("Mot de passe incorrect.")
+        st.caption("Conseil : change le mot de passe admin une fois connecté.")
+        st.stop()
 
-    st.success("Espace Admin")
-    st.caption("Paramètres & gestion des commandes.")
+    st.success("Dashboard Admin")
 
-    eur_xaf = float(get_setting("eur_xaf", str(DEFAULT_EUR_XAF)))
-    fee_mode = get_setting("fee_mode", DEFAULT_FEE_MODE)
-    fee_value = float(get_setting("fee_value", str(DEFAULT_FEE_VALUE)))
+    # Metrics
+    all_orders = list_all_orders(limit=2000)
+    nb_orders = len(all_orders)
+    total_ca = sum(float(o["total_to_pay_eur"]) for o in all_orders) if all_orders else 0.0
+    total_comm = sum(float(o["commission_eur"]) for o in all_orders) if all_orders else 0.0
 
-    c1, c2, c3 = st.columns([1, 1, 1], vertical_alignment="top")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Commandes", nb_orders)
+    c2.metric("CA total (EUR)", money_fmt(total_ca))
+    c3.metric("Frais AfriPay (EUR)", money_fmt(total_comm))
 
-    with c1:
-        st.markdown("### Taux EUR → XAF")
-        new_rate = st.number_input("Taux EUR → XAF", min_value=1.0, value=float(eur_xaf), step=0.1, format="%.3f")
+    st.divider()
+
+    st.subheader("Paramètres")
+    colP1, colP2, colP3 = st.columns([1, 1, 1], gap="large")
+
+    with colP1:
+        new_rate = st.number_input("Taux EUR → XAF", min_value=1.0, value=float(rate), step=1.0)
         if st.button("Enregistrer taux"):
-            set_setting("eur_xaf", str(new_rate))
-            st.success("Taux enregistré.")
+            set_setting("eur_xaf_rate", str(new_rate))
+            st.success("Taux mis à jour.")
             st.rerun()
 
-    with c2:
-        st.markdown("### Frais de service AfriPay")
-        new_mode = st.selectbox("Mode", options=["percent", "fixed"], index=0 if fee_mode == "percent" else 1)
-        new_val = st.number_input(
-            "Valeur (%, ou EUR si fixed)",
-            min_value=0.0,
-            value=float(fee_value),
-            step=0.5,
-            format="%.2f"
-        )
-        if st.button("Enregistrer frais"):
-            set_setting("fee_mode", new_mode)
-            set_setting("fee_value", str(new_val))
-            st.success("Frais enregistrés.")
+    with colP2:
+        mode = st.selectbox("Mode commission", ["percent", "fixed"], index=0 if commission_mode == "percent" else 1)
+        val = st.number_input("Valeur commission (%, ou EUR si fixed)", min_value=0.0, value=float(commission_value), step=0.5)
+        if st.button("Enregistrer commission"):
+            set_setting("commission_mode", mode)
+            set_setting("commission_value", str(val))
+            st.success("Commission mise à jour.")
             st.rerun()
 
-    with c3:
-        st.markdown("### Déconnexion admin")
-        if st.button("Se déconnecter"):
-            st.session_state["admin_logged"] = False
-            st.rerun()
+    with colP3:
+        new_pw = st.text_input("Nouveau mot de passe admin", type="password", placeholder="Min 8 caractères")
+        new_pw2 = st.text_input("Confirmer", type="password")
+        if st.button("Changer mot de passe"):
+            if len(new_pw.strip()) < 8:
+                st.error("Mot de passe trop court (min 8).")
+            elif new_pw.strip() != new_pw2.strip():
+                st.error("Confirmation différente.")
+            else:
+                admin_set_password(new_pw.strip())
+                st.success("Mot de passe admin modifié ✅")
 
+    st.subheader("Instructions paiement (affichées aux clients)")
+    instr = st.text_area("Texte instructions", value=pay_instructions, height=120)
+    if st.button("Enregistrer instructions"):
+        set_setting("momo_payment_instructions", instr)
+        st.success("Instructions mises à jour.")
+        st.rerun()
 
-# ----------------------------
-# Main
-# ----------------------------
-def main() -> None:
-    st.set_page_config(page_title=APP_NAME, page_icon="💳", layout="wide")
+    st.divider()
+    st.subheader("Commandes (admin)")
 
-    init_db()
-    ensure_session_defaults()
+    if not all_orders:
+        st.info("Aucune commande.")
+        st.stop()
 
-    sidebar_header()
+    # Filters
+    fcol1, fcol2, fcol3 = st.columns([1, 1, 1], gap="large")
+    with fcol1:
+        status_filter = st.selectbox("Filtre order_status", ["(tous)", "created", "paid", "ordered", "shipped", "closed"])
+    with fcol2:
+        pay_filter = st.selectbox("Filtre payment_status", ["(tous)", "pending", "confirmed"])
+    with fcol3:
+        search_ref = st.text_input("Recherche ref paiement (AFR-...)", placeholder="AFR-....").strip().upper()
 
-    tab = st.sidebar.radio(
-        "Menu",
-        ["Connexion", "Simuler", "Créer commande", "Mes commandes", "Admin"],
-        index=0
-    )
+    filtered = []
+    for o in all_orders:
+        if status_filter != "(tous)" and o["order_status"] != status_filter:
+            continue
+        if pay_filter != "(tous)" and o["payment_status"] != pay_filter:
+            continue
+        if search_ref and search_ref not in o["payment_reference"]:
+            continue
+        filtered.append(o)
 
-    if tab == "Connexion":
-        page_connexion()
-    elif tab == "Simuler":
-        page_simuler()
-    elif tab == "Créer commande":
-        page_creer_commande()
-    elif tab == "Mes commandes":
-        page_mes_commandes()
-    elif tab == "Admin":
-        page_admin()
+    st.caption(f"{len(filtered)} commande(s) affichée(s).")
 
+    for o in filtered:
+        with st.expander(f"#{o['id']} | {o['user_phone']} | {o['order_status']} / {o['payment_status']} | {o['payment_reference']}"):
+            st.write(f"**Client:** {o['user_name'] or ''} ({o['user_phone']})")
+            st.write(f"**Site:** {o['site_name'] or '-'}")
+            st.write(f"**Lien:** {o['product_url']}")
+            if o["product_title"]:
+                st.write(f"**Produit:** {o['product_title']}")
+            st.write(f"**Références / détails:** {o['product_specs']}")
+            st.write(f"**Adresse agence/transitaire:** {o['delivery_address']}")
 
-if __name__ == "__main__":
-    main()
+            st.write(
+                f"**Total:** € {money_fmt(o['total_to_pay_eur'])} "
+                f"(≈ {money_fmt(o['total_to_pay_xaf'])} XAF)"
+            )
+
+            st.markdown("### Mise à jour (Admin)")
+            c1, c2, c3 = st.columns([1, 1, 1], gap="large")
+
+            with c1:
+                new_pay_status = st.selectbox(
+                    "payment_status",
+                    ["pending", "confirmed"],
+                    index=0 if o["payment_status"] == "pending" else 1,
+                    key=f"pay_{o['id']}"
+                )
+                momo_tx_id = st.text_input("Mobile Money TX ID", value=o["momo_tx_id"] or "", key=f"tx_{o['id']}")
+
+            with c2:
+                new_order_status = st.selectbox(
+                    "order_status",
+                    ["created", "paid", "ordered", "shipped", "closed"],
+                    index=["created", "paid", "ordered", "shipped", "closed"].index(o["order_status"]),
+                    key=f"ord_{o['id']}"
+                )
+                momo_provider = st.selectbox(
+                    "Provider",
+                    ["MTN", "Orange", "Autre"],
+                    index=["MTN", "Orange", "Autre"].index(o["momo_provider"] or "Autre"),
+                    key=f"prov_{o['id']}"
+                )
+
+            with c3:
+                tracking_number = st.text_input("Tracking number", value=o["tracking_number"] or "", key=f"trk_{o['id']}")
+                tracking_url = st.text_input("Tracking URL", value=o["tracking_url"] or "", key=f"trku_{o['id']}")
+
+            if st.button("Enregistrer MAJ", key=f"save_{o['id']}"):
+                update_order(
+                    o["id"],
+                    payment_status=new_pay_status,
+                    order_status=new_order_status,
+                    momo_tx_id=momo_tx_id.strip() or None,
+                    momo_provider=momo_provider,
+                    tracking_number=tracking_number.strip() or None,
+                    tracking_url=tracking_url.strip() or None,
+                )
+                st.success("Mis à jour ✅")
+                st.rerun()
+
+    st.divider()
+    if st.button("Se déconnecter (admin)"):
+        st.session_state.is_admin = False
+        st.rerun()
