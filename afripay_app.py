@@ -1,10 +1,9 @@
 import os
 import sqlite3
+import secrets
 import hashlib
 import hmac
-import secrets
 from datetime import datetime
-from pathlib import Path
 
 import streamlit as st
 
@@ -12,17 +11,20 @@ APP_TITLE = "AfriPay Afrika"
 
 
 # ----------------------------
-# DB PATH (Cloud-safe)
+# DB (Cloud safe: force fresh DB name)
 # ----------------------------
 def is_streamlit_cloud() -> bool:
     return os.getenv("STREAMLIT_SERVER_HEADLESS", "").lower() == "true"
 
 
 def get_db_path() -> str:
+    # Optional override
     env_path = os.getenv("AFRIPAY_DB_PATH")
     if env_path:
         return env_path
-    return "/tmp/afripay.db" if is_streamlit_cloud() else "afripay.db"
+
+    # IMPORTANT: new filename on Cloud => avoids old schema stored in /tmp
+    return "/tmp/afripay_v12.db" if is_streamlit_cloud() else "afripay.db"
 
 
 DB_PATH = get_db_path()
@@ -42,6 +44,7 @@ def get_conn() -> sqlite3.Connection:
 # Admin password hashing
 # ----------------------------
 def pbkdf2_hash_password(password: str, salt: bytes | None = None) -> str:
+    # pbkdf2_sha256$iterations$salt_hex$hash_hex
     if salt is None:
         salt = secrets.token_bytes(16)
     iterations = 200_000
@@ -63,25 +66,15 @@ def pbkdf2_verify_password(password: str, stored: str) -> bool:
 
 
 # ----------------------------
-# DB INIT + SAFE MIGRATIONS
+# DB INIT + Safe migrations
 # ----------------------------
 def init_db():
-    # Optional: if you have a seed DB in repo, copy it once on cloud
-    if is_streamlit_cloud():
-        seed = Path("afripay.db")
-        target = Path(DB_PATH)
-        try:
-            if seed.exists() and not target.exists():
-                target.write_bytes(seed.read_bytes())
-        except Exception:
-            pass
-
     conn = get_conn()
     cur = conn.cursor()
 
     # users
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         phone TEXT UNIQUE,
         name TEXT,
@@ -92,7 +85,7 @@ def init_db():
 
     # orders
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
+    CREATE TABLE IF NOT EXISTS orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         created_at TEXT,
@@ -117,24 +110,24 @@ def init_db():
     )
     """)
 
-    # settings: minimal schema (no updated_at)
+    # settings (ONLY key/value for compatibility)
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS settings (
+    CREATE TABLE IF NOT EXISTS settings(
         key TEXT,
         value TEXT
     )
     """)
 
-    # admin_auth: create "best" shape if missing
+    # admin_auth (new schema)
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS admin_auth (
+    CREATE TABLE IF NOT EXISTS admin_auth(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         password_hash TEXT,
         created_at TEXT
     )
     """)
 
-    # Safe add columns if missing (works even if table already exists with old columns)
+    # safe add columns (ignore if exists)
     def add_col(table: str, col_def: str):
         try:
             cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
@@ -152,24 +145,26 @@ def init_db():
     add_col("orders", "payment_status TEXT")
     add_col("orders", "order_status TEXT")
 
-    # admin_auth migrations for very old schema (ex: password only)
+    # admin_auth migrations (legacy support)
     add_col("admin_auth", "password_hash TEXT")
     add_col("admin_auth", "created_at TEXT")
-    add_col("admin_auth", "password TEXT")  # legacy fallback
+    add_col("admin_auth", "password TEXT")  # old plaintext column, if needed
 
     conn.commit()
     conn.close()
 
 
 # ----------------------------
-# SETTINGS (UPSERT without ON CONFLICT)
+# Settings UPSERT (no updated_at, no ON CONFLICT)
 # ----------------------------
 def set_setting(key: str, value: str):
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
     if cur.rowcount == 0:
         cur.execute("INSERT INTO settings(key, value) VALUES (?, ?)", (key, value))
+
     conn.commit()
     conn.close()
 
@@ -184,9 +179,9 @@ def get_setting(key: str, default: str | None = None) -> str | None:
 
 
 # ----------------------------
-# ADMIN AUTH (fully schema-flexible)
+# Admin auth (schema-flexible)
 # ----------------------------
-def admin_columns(cur) -> set[str]:
+def admin_cols(cur) -> set[str]:
     cur.execute("PRAGMA table_info(admin_auth)")
     return {r["name"] for r in cur.fetchall()}
 
@@ -195,34 +190,15 @@ def ensure_admin_exists():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Ensure columns exist (in case ALTER TABLE didn't run before)
-    cols = admin_columns(cur)
-    if "password_hash" not in cols:
-        try:
-            cur.execute("ALTER TABLE admin_auth ADD COLUMN password_hash TEXT")
-        except sqlite3.OperationalError:
-            pass
-    if "created_at" not in cols:
-        try:
-            cur.execute("ALTER TABLE admin_auth ADD COLUMN created_at TEXT")
-        except sqlite3.OperationalError:
-            pass
-    if "password" not in cols:
-        try:
-            cur.execute("ALTER TABLE admin_auth ADD COLUMN password TEXT")
-        except sqlite3.OperationalError:
-            pass
+    cols = admin_cols(cur)
 
-    # Re-read columns after possible migrations
-    cols = admin_columns(cur)
-
+    # Ensure at least one row exists
     cur.execute("SELECT COUNT(*) AS n FROM admin_auth")
     if cur.fetchone()["n"] > 0:
-        conn.commit()
         conn.close()
         return
 
-    # Get admin password
+    # Get password
     admin_pw = None
     try:
         admin_pw = st.secrets.get("ADMIN_PASSWORD", None)
@@ -231,7 +207,7 @@ def ensure_admin_exists():
     if not admin_pw:
         admin_pw = os.getenv("ADMIN_PASSWORD") or "admin123"
 
-    # Insert according to available columns
+    # Insert depending on schema
     if "password_hash" in cols:
         ph = pbkdf2_hash_password(admin_pw)
         if "created_at" in cols:
@@ -242,10 +218,8 @@ def ensure_admin_exists():
         else:
             cur.execute("INSERT INTO admin_auth(password_hash) VALUES (?)", (ph,))
     elif "password" in cols:
-        # legacy plaintext
         cur.execute("INSERT INTO admin_auth(password) VALUES (?)", (admin_pw,))
     else:
-        # last resort
         cur.execute("INSERT INTO admin_auth DEFAULT VALUES")
 
     conn.commit()
@@ -255,7 +229,7 @@ def ensure_admin_exists():
 def get_admin_credential() -> tuple[str | None, str]:
     conn = get_conn()
     cur = conn.cursor()
-    cols = admin_columns(cur)
+    cols = admin_cols(cur)
 
     if "password_hash" in cols:
         cur.execute("SELECT password_hash AS v FROM admin_auth ORDER BY id LIMIT 1")
@@ -280,14 +254,11 @@ def ensure_defaults():
 
 
 # ----------------------------
-# SESSION
+# Session
 # ----------------------------
 def init_session():
     st.session_state.setdefault("logged_in", False)
     st.session_state.setdefault("user_id", None)
-    st.session_state.setdefault("user_phone", "")
-    st.session_state.setdefault("user_name", "")
-    st.session_state.setdefault("user_email", "")
     st.session_state.setdefault("otp_code", None)
     st.session_state.setdefault("otp_phone", None)
     st.session_state.setdefault("admin_logged_in", False)
@@ -296,9 +267,6 @@ def init_session():
 def logout_user():
     st.session_state["logged_in"] = False
     st.session_state["user_id"] = None
-    st.session_state["user_phone"] = ""
-    st.session_state["user_name"] = ""
-    st.session_state["user_email"] = ""
     st.session_state["otp_code"] = None
     st.session_state["otp_phone"] = None
 
@@ -308,14 +276,14 @@ def logout_admin():
 
 
 # ----------------------------
-# DATA
+# Data
 # ----------------------------
 def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
     row = cur.fetchone()
-
     if row:
         user_id = int(row["id"])
         cur.execute("UPDATE users SET name=?, email=? WHERE id=?", (name, email, user_id))
@@ -343,15 +311,15 @@ def create_order(user_id: int, product_name: str, amount_xaf: float,
             user_id, created_at,
             product_name, amount_xaf,
             seller_fee_xaf, afripay_fee_xaf, total_xaf,
-            delivery_address, client_ack,
+            delivery_address,
             tracking_number, tracking_url,
             payment_status, order_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id, now_iso(),
         product_name, amount_xaf,
         seller_fee_xaf, afripay_fee_xaf, total,
-        delivery_address, 0,
+        delivery_address,
         "", "",
         "EN_ATTENTE", "CREÉE"
     ))
@@ -414,24 +382,8 @@ def get_stats():
     cur.execute("SELECT COALESCE(SUM(total_xaf), 0) AS s FROM orders")
     sum_total = cur.fetchone()["s"]
 
-    cur.execute("""
-        SELECT order_status, COUNT(*) AS n
-        FROM orders
-        GROUP BY order_status
-        ORDER BY n DESC
-    """)
-    by_status = cur.fetchall()
-
-    cur.execute("""
-        SELECT payment_status, COUNT(*) AS n
-        FROM orders
-        GROUP BY payment_status
-        ORDER BY n DESC
-    """)
-    by_payment = cur.fetchall()
-
     conn.close()
-    return users_n, orders_n, sum_total, by_status, by_payment
+    return users_n, orders_n, sum_total
 
 
 # ----------------------------
@@ -455,12 +407,13 @@ def sidebar():
 
 def page_connexion():
     st.title("Connexion")
+
     st.write("### 1) Demander OTP (mode test)")
     phone = st.text_input("Téléphone (ex: +2376xxxxxxxx)", placeholder="+2376...")
 
     if st.button("Envoyer OTP"):
         if not phone.strip():
-            st.error("Entre ton numéro de téléphone.")
+            st.error("Entre ton numéro.")
             return
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
@@ -473,22 +426,19 @@ def page_connexion():
     email = st.text_input("Email (optionnel)")
 
     if st.button("Se connecter"):
-        if not st.session_state.get("otp_code") or not st.session_state.get("otp_phone"):
+        if not st.session_state.get("otp_code"):
             st.error("Demande d'abord un OTP.")
             return
-        if phone.strip() != st.session_state["otp_phone"]:
-            st.error("Le téléphone ne correspond pas à celui utilisé pour l’OTP.")
+        if phone.strip() != st.session_state.get("otp_phone"):
+            st.error("Téléphone différent de celui utilisé pour l’OTP.")
             return
-        if otp_in.strip() != st.session_state["otp_code"]:
+        if otp_in.strip() != st.session_state.get("otp_code"):
             st.error("OTP incorrect.")
             return
 
-        user_id = upsert_user(phone.strip(), name.strip(), email.strip())
+        uid = upsert_user(phone.strip(), name.strip(), email.strip())
         st.session_state["logged_in"] = True
-        st.session_state["user_id"] = user_id
-        st.session_state["user_phone"] = phone.strip()
-        st.session_state["user_name"] = name.strip()
-        st.session_state["user_email"] = email.strip()
+        st.session_state["user_id"] = uid
         st.success("Connexion OK ✅")
         st.rerun()
 
@@ -504,8 +454,9 @@ def page_simuler():
 
 def page_creer_commande():
     st.title("Créer commande")
+
     if not st.session_state.get("logged_in"):
-        st.warning("Tu dois être connecté pour créer une commande.")
+        st.warning("Tu dois être connecté.")
         return
 
     st.info("📌 Transparence : AfriPay facilite uniquement le paiement. Le client fournit l’adresse de son agence/transitaire et gère livraison + dédouanement.")
@@ -523,17 +474,18 @@ def page_creer_commande():
         delivery_address = st.text_area("Adresse agence/transitaire (obligatoire)")
         total = amount_xaf + seller_fee + afripay_fee
         st.caption(f"Total estimé: {total:,.0f} XAF".replace(",", " "))
+
         submitted = st.form_submit_button("Créer la commande")
 
     if submitted:
         if not product_name.strip():
-            st.error("Le nom de la commande est obligatoire.")
+            st.error("Nom obligatoire.")
             return
         if total <= 0:
-            st.error("Le total doit être > 0.")
+            st.error("Total doit être > 0.")
             return
         if not delivery_address.strip():
-            st.error("Adresse agence/transitaire obligatoire avant de créer une commande.")
+            st.error("Adresse agence/transitaire obligatoire.")
             return
 
         oid = create_order(
@@ -549,13 +501,14 @@ def page_creer_commande():
 
 def page_mes_commandes():
     st.title("Mes commandes")
+
     if not st.session_state.get("logged_in"):
-        st.warning("Tu dois être connecté pour voir tes commandes.")
+        st.warning("Tu dois être connecté.")
         return
 
     rows = list_orders_for_user(int(st.session_state["user_id"]))
     if not rows:
-        st.info("Aucune commande pour le moment.")
+        st.info("Aucune commande.")
         return
 
     for r in rows:
@@ -569,7 +522,7 @@ def page_mes_commandes():
             st.write(f"**Total :** {float(r.get('total_xaf',0) or 0):,.0f} XAF".replace(",", " "))
             st.write(f"**Adresse agence/transitaire :** {r.get('delivery_address','')}")
             st.write(f"**Paiement :** {r.get('payment_status','')}")
-            st.write(f"**Statut commande :** {r.get('order_status','')}")
+            st.write(f"**Statut :** {r.get('order_status','')}")
 
             tr_num = (r.get("tracking_number") or "").strip()
             tr_url = (r.get("tracking_url") or "").strip()
@@ -579,8 +532,6 @@ def page_mes_commandes():
                     st.write(f"- Numéro : `{tr_num}`")
                 if tr_url:
                     st.write(f"- Lien : {tr_url}")
-            else:
-                st.caption("Tracking non disponible pour l’instant.")
 
 
 def page_admin():
@@ -593,7 +544,7 @@ def page_admin():
         if st.button("Se connecter (Admin)"):
             stored, mode = get_admin_credential()
             if not stored:
-                st.error("Aucun mot de passe admin configuré.")
+                st.error("Admin non configuré.")
                 return
 
             ok = False
@@ -617,15 +568,15 @@ def page_admin():
         logout_admin()
         st.rerun()
 
-    st.divider()
-
-    users_n, orders_n, sum_total, by_status, by_payment = get_stats()
+    users_n, orders_n, sum_total = get_stats()
     c1, c2, c3 = st.columns(3)
     c1.metric("Utilisateurs", users_n)
     c2.metric("Commandes", orders_n)
     c3.metric("Total (XAF)", f"{float(sum_total):,.0f}".replace(",", " "))
 
-    st.write("### Mettre à jour Tracking / Statuts")
+    st.divider()
+    st.subheader("Mettre à jour Tracking / Statuts")
+
     orders = list_orders_all(limit=200)
     if not orders:
         st.info("Aucune commande.")
@@ -645,10 +596,16 @@ def page_admin():
     payment_current = (selected.get("payment_status") or "EN_ATTENTE")
     order_current = (selected.get("order_status") or "CREÉE")
 
-    payment_status = st.selectbox("Payment status", payment_options,
-                                  index=payment_options.index(payment_current) if payment_current in payment_options else 0)
-    order_status = st.selectbox("Order status", order_options,
-                                index=order_options.index(order_current) if order_current in order_options else 0)
+    payment_status = st.selectbox(
+        "Payment status",
+        payment_options,
+        index=payment_options.index(payment_current) if payment_current in payment_options else 0
+    )
+    order_status = st.selectbox(
+        "Order status",
+        order_options,
+        index=order_options.index(order_current) if order_current in order_options else 0
+    )
 
     if st.button("Enregistrer mise à jour"):
         update_order_admin(int(order_id), tracking_number.strip(), tracking_url.strip(), payment_status, order_status)
