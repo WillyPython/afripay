@@ -7,9 +7,9 @@ import streamlit as st
 APP_TITLE = "AfriPay Afrika"
 
 
-# =========================
+# ========================
 # DB PATH (Cloud compatible)
-# =========================
+# ========================
 
 def get_db_path():
 
@@ -35,9 +35,9 @@ def now():
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# =========================
+# ========================
 # INIT DB
-# =========================
+# ========================
 
 def init_db():
 
@@ -76,9 +76,9 @@ def init_db():
     conn.close()
 
 
-# =========================
+# ========================
 # SESSION
-# =========================
+# ========================
 
 def init_session():
 
@@ -94,9 +94,9 @@ def logout():
     st.session_state.user_id = None
 
 
-# =========================
+# ========================
 # USER UPSERT
-# =========================
+# ========================
 
 def upsert_user(phone, name, email):
 
@@ -130,9 +130,9 @@ def upsert_user(phone, name, email):
     return uid
 
 
-# =========================
+# ========================
 # CREATE ORDER
-# =========================
+# ========================
 
 def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
 
@@ -168,19 +168,18 @@ def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
     conn.close()
 
 
-# =========================
+# ========================
 # SIDEBAR
-# =========================
+# ========================
 
 def sidebar():
 
-    # logo pro (taille fixée)
-    st.sidebar.image("assets/logo.png", width=220)
+    # Logo pro
+    st.sidebar.image("assets/logo.png", width=200)
 
-    # séparation
     st.sidebar.markdown("---")
 
-    st.sidebar.markdown(f"## {APP_TITLE}")
+    st.sidebar.markdown("## AfriPay Afrika")
 
     st.sidebar.caption("MVP — Facilitateur de paiement international")
 
@@ -211,9 +210,9 @@ def sidebar():
     )
 
 
-# =========================
+# ========================
 # LOGIN PAGE
-# =========================
+# ========================
 
 def page_login():
 
@@ -254,9 +253,9 @@ def page_login():
             st.error("OTP incorrect")
 
 
-# =========================
+# ========================
 # CREATE ORDER PAGE
-# =========================
+# ========================
 
 def page_create():
 
@@ -273,7 +272,7 @@ def page_create():
 
     seller_fee = st.number_input("Frais vendeur (site)", 0)
 
-    afripay_fee = st.number_input("Frais de service AfriPay", 0)
+    afripay_fee = st.number_input("Frais service AfriPay", 0)
 
     address = st.text_area("Adresse agence / transitaire")
 
@@ -296,9 +295,9 @@ def page_create():
         st.success("Commande créée")
 
 
-# =========================
+# ========================
 # MY ORDERS
-# =========================
+# ========================
 
 def page_orders():
 
@@ -325,13 +324,13 @@ def page_orders():
         )
 
 
-# =========================
+# ========================
 # ADMIN PAGE
-# =========================
+# ========================
 
 def page_admin():
 
-    st.title("Admin")
+    st.title("Dashboard Admin")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -350,9 +349,9 @@ def page_admin():
     col2.metric("Commandes", orders)
 
 
-# =========================
+# ========================
 # MAIN
-# =========================
+# ========================
 
 def main():
 
