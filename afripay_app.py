@@ -1,36 +1,25 @@
 import os
 import sqlite3
 import secrets
-import hashlib
-import hmac
 from datetime import datetime
-
 import streamlit as st
 
 APP_TITLE = "AfriPay Afrika"
 
 
 # =========================
-# DB (Cloud safe)
+# DB PATH (Cloud compatible)
 # =========================
-
-def is_streamlit_cloud():
-    return os.getenv("STREAMLIT_SERVER_HEADLESS", "").lower() == "true"
-
 
 def get_db_path():
 
-    if is_streamlit_cloud():
-        return "/tmp/afripay_v13.db"
+    if os.getenv("STREAMLIT_SERVER_HEADLESS"):
+        return "/tmp/afripay.db"
 
     return "afripay.db"
 
 
 DB_PATH = get_db_path()
-
-
-def now_iso():
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_conn():
@@ -41,32 +30,13 @@ def get_conn():
     return conn
 
 
-# =========================
-# PASSWORD HASH
-# =========================
+def now():
 
-def hash_password(password):
-
-    salt = secrets.token_bytes(16)
-
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200000)
-
-    return salt.hex() + "$" + dk.hex()
-
-
-def verify_password(password, stored):
-
-    salt, hashed = stored.split("$")
-
-    salt = bytes.fromhex(salt)
-
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200000)
-
-    return hmac.compare_digest(dk.hex(), hashed)
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
 # =========================
-# DB INIT
+# INIT DB
 # =========================
 
 def init_db():
@@ -102,101 +72,8 @@ def init_db():
     )
     """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS settings(
-        key TEXT,
-        value TEXT
-    )
-    """)
-
-    # reset admin table to avoid schema conflicts
-    cur.execute("DROP TABLE IF EXISTS admin_auth")
-
-    cur.execute("""
-    CREATE TABLE admin_auth(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        password_hash TEXT,
-        created_at TEXT
-    )
-    """)
-
     conn.commit()
     conn.close()
-
-
-# =========================
-# SETTINGS
-# =========================
-
-def set_setting(key, value):
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
-
-    if cur.rowcount == 0:
-        cur.execute("INSERT INTO settings(key,value) VALUES (?,?)", (key, value))
-
-    conn.commit()
-    conn.close()
-
-
-def get_setting(key):
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
-    row = cur.fetchone()
-
-    conn.close()
-
-    if row:
-        return row["value"]
-
-    return None
-
-
-# =========================
-# ADMIN
-# =========================
-
-def ensure_admin():
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) as n FROM admin_auth")
-
-    if cur.fetchone()["n"] == 0:
-
-        pw = os.getenv("ADMIN_PASSWORD") or "admin123"
-
-        hashed = hash_password(pw)
-
-        cur.execute(
-            "INSERT INTO admin_auth(password_hash,created_at) VALUES (?,?)",
-            (hashed, now_iso())
-        )
-
-        conn.commit()
-
-    conn.close()
-
-
-def get_admin_hash():
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("SELECT password_hash FROM admin_auth LIMIT 1")
-
-    row = cur.fetchone()
-
-    conn.close()
-
-    return row["password_hash"]
 
 
 # =========================
@@ -209,7 +86,6 @@ def init_session():
 
         st.session_state.logged = False
         st.session_state.user_id = None
-        st.session_state.admin = False
 
 
 def logout():
@@ -219,7 +95,7 @@ def logout():
 
 
 # =========================
-# USERS
+# USER UPSERT
 # =========================
 
 def upsert_user(phone, name, email):
@@ -243,7 +119,7 @@ def upsert_user(phone, name, email):
 
         cur.execute(
             "INSERT INTO users(phone,name,email,created_at) VALUES (?,?,?,?)",
-            (phone, name, email, now_iso())
+            (phone, name, email, now())
         )
 
         uid = cur.lastrowid
@@ -255,7 +131,7 @@ def upsert_user(phone, name, email):
 
 
 # =========================
-# ORDERS
+# CREATE ORDER
 # =========================
 
 def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
@@ -274,9 +150,10 @@ def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
         payment_status,order_status
     )
     VALUES(?,?,?,?,?,?,?,?,?,?)
-    """, (
+    """,
+    (
         user_id,
-        now_iso(),
+        now(),
         product,
         amount,
         seller_fee,
@@ -297,7 +174,11 @@ def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
 
 def sidebar():
 
-    st.sidebar.image("assets/logo.png", use_container_width=True)
+    # logo pro (taille fixée)
+    st.sidebar.image("assets/logo.png", width=220)
+
+    # séparation
+    st.sidebar.markdown("---")
 
     st.sidebar.markdown(f"## {APP_TITLE}")
 
@@ -308,6 +189,7 @@ def sidebar():
         st.sidebar.success("Connecté ✅")
 
         if st.sidebar.button("Déconnexion"):
+
             logout()
             st.rerun()
 
@@ -315,14 +197,22 @@ def sidebar():
 
         st.sidebar.info("Non connecté")
 
+    st.sidebar.markdown("---")
+
     return st.sidebar.radio(
         "Menu",
-        ["Connexion", "Simuler", "Créer commande", "Mes commandes", "Admin"]
+        [
+            "Connexion",
+            "Simuler",
+            "Créer commande",
+            "Mes commandes",
+            "Admin"
+        ]
     )
 
 
 # =========================
-# LOGIN
+# LOGIN PAGE
 # =========================
 
 def page_login():
@@ -343,6 +233,7 @@ def page_login():
     otp_input = st.text_input("Entrer OTP")
 
     name = st.text_input("Nom")
+
     email = st.text_input("Email")
 
     if st.button("Se connecter"):
@@ -364,7 +255,7 @@ def page_login():
 
 
 # =========================
-# CREATE ORDER
+# CREATE ORDER PAGE
 # =========================
 
 def page_create():
@@ -378,13 +269,13 @@ def page_create():
 
     product = st.text_input("Produit")
 
-    amount = st.number_input("Montant produit", 0)
+    amount = st.number_input("Montant produit XAF", 0)
 
     seller_fee = st.number_input("Frais vendeur (site)", 0)
 
-    afripay_fee = st.number_input("Frais service AfriPay", 0)
+    afripay_fee = st.number_input("Frais de service AfriPay", 0)
 
-    address = st.text_area("Adresse agence/transitaire")
+    address = st.text_area("Adresse agence / transitaire")
 
     if st.button("Créer commande"):
 
@@ -411,6 +302,11 @@ def page_create():
 
 def page_orders():
 
+    if not st.session_state.logged:
+
+        st.warning("Connecte-toi")
+        return
+
     conn = get_conn()
     cur = conn.cursor()
 
@@ -420,7 +316,6 @@ def page_orders():
     )
 
     rows = cur.fetchall()
-
     conn.close()
 
     for r in rows:
@@ -431,42 +326,28 @@ def page_orders():
 
 
 # =========================
-# ADMIN
+# ADMIN PAGE
 # =========================
 
 def page_admin():
 
     st.title("Admin")
 
-    pw = st.text_input("Mot de passe admin", type="password")
+    conn = get_conn()
+    cur = conn.cursor()
 
-    if st.button("Login"):
+    cur.execute("SELECT COUNT(*) as n FROM users")
+    users = cur.fetchone()["n"]
 
-        stored = get_admin_hash()
+    cur.execute("SELECT COUNT(*) as n FROM orders")
+    orders = cur.fetchone()["n"]
 
-        if verify_password(pw, stored):
+    conn.close()
 
-            st.session_state.admin = True
+    col1, col2 = st.columns(2)
 
-        else:
-
-            st.error("Mot de passe incorrect")
-
-    if st.session_state.admin:
-
-        conn = get_conn()
-        cur = conn.cursor()
-
-        cur.execute("SELECT COUNT(*) as n FROM users")
-        users = cur.fetchone()["n"]
-
-        cur.execute("SELECT COUNT(*) as n FROM orders")
-        orders = cur.fetchone()["n"]
-
-        conn.close()
-
-        st.metric("Utilisateurs", users)
-        st.metric("Commandes", orders)
+    col1.metric("Utilisateurs", users)
+    col2.metric("Commandes", orders)
 
 
 # =========================
@@ -478,7 +359,6 @@ def main():
     st.set_page_config(page_title=APP_TITLE)
 
     init_db()
-    ensure_admin()
     init_session()
 
     menu = sidebar()
@@ -487,7 +367,7 @@ def main():
         page_login()
 
     elif menu == "Simuler":
-        st.title("Simulation")
+        st.title("Simulation paiement")
 
     elif menu == "Créer commande":
         page_create()
