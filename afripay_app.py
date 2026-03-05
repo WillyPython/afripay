@@ -174,16 +174,25 @@ def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
 
 def sidebar():
 
-    # Logo centré
+    # logo centré
     st.sidebar.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
     st.sidebar.image("assets/logo.png", width=200)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
 
-    st.sidebar.markdown("## AfriPay Afrika")
-
-    st.sidebar.caption("MVP — Facilitateur de paiement international")
+    # titre + slogan centré
+    st.sidebar.markdown(
+    """
+    <div style='text-align:center'>
+    <h3>AfriPay Afrika</h3>
+    <p style='font-size:13px;color:gray'>
+    Facilitateur de paiement international
+    </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+    )
 
     if st.session_state.logged:
 
