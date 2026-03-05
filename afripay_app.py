@@ -8,7 +8,7 @@ APP_TITLE = "AfriPay Afrika"
 
 
 # ========================
-# DB PATH (Cloud compatible)
+# DB PATH (Streamlit Cloud)
 # ========================
 
 def get_db_path():
@@ -174,8 +174,10 @@ def create_order(user_id, product, amount, seller_fee, afripay_fee, address):
 
 def sidebar():
 
-    # Logo pro
+    # Logo centré
+    st.sidebar.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
     st.sidebar.image("assets/logo.png", width=200)
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
 
