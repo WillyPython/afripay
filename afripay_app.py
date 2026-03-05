@@ -19,7 +19,7 @@ def is_cloud() -> bool:
 
 def db_path() -> str:
     # New file name avoids old schema conflicts on Streamlit Cloud
-    return "/tmp/afripay_v17.db" if is_cloud() else "afripay.db"
+    return "/tmp/afripay_v18.db" if is_cloud() else "afripay.db"
 
 
 DB_PATH = db_path()
@@ -64,7 +64,7 @@ def pbkdf2_verify_password(password: str, stored: str) -> bool:
 
 
 # =========================
-# DB INIT + MIGRATIONS
+# DB INIT + SAFE MIGRATIONS
 # =========================
 def init_db():
     conn = get_conn()
@@ -80,7 +80,6 @@ def init_db():
     )
     """)
 
-    # Orders with professional numbering
     cur.execute("""
     CREATE TABLE IF NOT EXISTS orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +94,7 @@ def init_db():
         afripay_fee_xaf REAL,
         total_xaf REAL,
 
-        delivery_address TEXT,           -- required
+        delivery_address TEXT,
         client_ack INTEGER DEFAULT 0,
 
         tracking_number TEXT,
@@ -123,7 +122,7 @@ def init_db():
     )
     """)
 
-    # ---- safe add columns if old db exists locally ----
+    # In case local DB already exists (older schema), add missing columns safely
     def add_col(table: str, col_def: str):
         try:
             cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
@@ -176,7 +175,6 @@ def ensure_admin_exists():
     cur.execute("SELECT COUNT(*) AS n FROM admin_auth")
     n = cur.fetchone()["n"]
     if n == 0:
-        # Use Streamlit Secrets if available
         admin_pw = None
         try:
             admin_pw = st.secrets.get("ADMIN_PASSWORD", None)
@@ -365,18 +363,25 @@ def get_stats():
     return users_n, orders_n, total_sum
 
 
+def get_order_by_code(order_code: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM orders WHERE order_code=? LIMIT 1", (order_code,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 # =========================
 # UI: SIDEBAR
 # =========================
 def sidebar():
-    # Logo centered + fintech sizing
     st.sidebar.markdown("<div style='text-align:center'>", unsafe_allow_html=True)
     st.sidebar.image("assets/logo.png", width=180)
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
 
-    # Title + slogan centered
     st.sidebar.markdown(
         """
         <div style='text-align:center'>
@@ -388,8 +393,6 @@ def sidebar():
         """,
         unsafe_allow_html=True
     )
-
-    st.sidebar.markdown("")
 
     if st.session_state.get("logged_in"):
         st.sidebar.success("Connecté ✅")
@@ -403,7 +406,7 @@ def sidebar():
 
     return st.sidebar.radio(
         "Menu",
-        ["Connexion", "Simuler", "Créer commande", "Mes commandes", "Admin"],
+        ["Connexion", "Suivre commande", "Simuler", "Créer commande", "Mes commandes", "Admin"],
         index=0
     )
 
@@ -444,6 +447,40 @@ def page_connexion():
         st.session_state["user_id"] = uid
         st.success("Connexion OK ✅")
         st.rerun()
+
+
+def page_tracking():
+    st.title("Suivre une commande")
+    st.caption("Entre ton numéro de commande (ex: AFR-2026-00001)")
+
+    code = st.text_input("Numéro de commande", placeholder="AFR-2026-00001")
+
+    if st.button("Rechercher"):
+        if not code.strip():
+            st.error("Entre un numéro de commande.")
+            return
+
+        row = get_order_by_code(code.strip())
+        if not row:
+            st.error("Commande introuvable.")
+            return
+
+        st.success(f"Commande : **{row.get('order_code')}**")
+        st.write("**Produit :**", row.get("product_name", ""))
+        st.write("**Montant :**", f"{float(row.get('amount_xaf',0) or 0):,.0f} XAF".replace(",", " "))
+        st.write("**Statut commande :**", row.get("order_status", ""))
+        st.write("**Statut paiement :**", row.get("payment_status", ""))
+
+        tr_num = (row.get("tracking_number") or "").strip()
+        tr_url = (row.get("tracking_url") or "").strip()
+        if tr_num or tr_url:
+            st.subheader("Tracking")
+            if tr_num:
+                st.write("**Numéro :**", f"`{tr_num}`")
+            if tr_url:
+                st.write("**Lien :**", tr_url)
+        else:
+            st.info("Tracking non encore disponible.")
 
 
 def page_simuler():
@@ -627,6 +664,8 @@ def main():
 
     if menu == "Connexion":
         page_connexion()
+    elif menu == "Suivre commande":
+        page_tracking()
     elif menu == "Simuler":
         page_simuler()
     elif menu == "Créer commande":
