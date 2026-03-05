@@ -10,9 +10,9 @@ import streamlit as st
 APP_TITLE = "AfriPay Afrika"
 
 
-# ----------------------------
-# DB (Cloud safe: force fresh DB name)
-# ----------------------------
+# =========================
+# DB (Cloud-safe)
+# =========================
 def is_streamlit_cloud() -> bool:
     return os.getenv("STREAMLIT_SERVER_HEADLESS", "").lower() == "true"
 
@@ -23,7 +23,7 @@ def get_db_path() -> str:
     if env_path:
         return env_path
 
-    # IMPORTANT: new filename on Cloud => avoids old schema stored in /tmp
+    # IMPORTANT: new filename on Cloud => avoids old /tmp schema conflicts
     return "/tmp/afripay_v12.db" if is_streamlit_cloud() else "afripay.db"
 
 
@@ -40,9 +40,9 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-# ----------------------------
-# Admin password hashing
-# ----------------------------
+# =========================
+# Admin password (hash)
+# =========================
 def pbkdf2_hash_password(password: str, salt: bytes | None = None) -> str:
     # pbkdf2_sha256$iterations$salt_hex$hash_hex
     if salt is None:
@@ -65,9 +65,9 @@ def pbkdf2_verify_password(password: str, stored: str) -> bool:
         return False
 
 
-# ----------------------------
-# DB INIT + Safe migrations
-# ----------------------------
+# =========================
+# DB init + migrations
+# =========================
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
@@ -83,7 +83,7 @@ def init_db():
     )
     """)
 
-    # orders
+    # orders (v1.2)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS orders(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +110,7 @@ def init_db():
     )
     """)
 
-    # settings (ONLY key/value for compatibility)
+    # settings (minimal schema to be compatible)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS settings(
         key TEXT,
@@ -118,23 +118,14 @@ def init_db():
     )
     """)
 
-    # admin_auth (new schema)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS admin_auth(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        password_hash TEXT,
-        created_at TEXT
-    )
-    """)
-
-    # safe add columns (ignore if exists)
+    # --- SAFE COLUMN ADD ---
     def add_col(table: str, col_def: str):
         try:
             cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
         except sqlite3.OperationalError:
             pass
 
-    # orders migrations
+    # ensure columns exist in orders (old DB compatibility)
     add_col("orders", "seller_fee_xaf REAL")
     add_col("orders", "afripay_fee_xaf REAL")
     add_col("orders", "total_xaf REAL")
@@ -145,26 +136,30 @@ def init_db():
     add_col("orders", "payment_status TEXT")
     add_col("orders", "order_status TEXT")
 
-    # admin_auth migrations (legacy support)
-    add_col("admin_auth", "password_hash TEXT")
-    add_col("admin_auth", "created_at TEXT")
-    add_col("admin_auth", "password TEXT")  # old plaintext column, if needed
+    # IMPORTANT: reset ONLY admin table to avoid all legacy schema issues
+    # (does NOT touch users/orders/settings)
+    cur.execute("DROP TABLE IF EXISTS admin_auth")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_auth(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        password_hash TEXT,
+        created_at TEXT
+    )
+    """)
 
     conn.commit()
     conn.close()
 
 
-# ----------------------------
-# Settings UPSERT (no updated_at, no ON CONFLICT)
-# ----------------------------
+# =========================
+# Settings (upsert safe)
+# =========================
 def set_setting(key: str, value: str):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("UPDATE settings SET value=? WHERE key=?", (value, key))
     if cur.rowcount == 0:
         cur.execute("INSERT INTO settings(key, value) VALUES (?, ?)", (key, value))
-
     conn.commit()
     conn.close()
 
@@ -178,73 +173,42 @@ def get_setting(key: str, default: str | None = None) -> str | None:
     return row["value"] if row else default
 
 
-# ----------------------------
-# Admin auth (schema-flexible)
-# ----------------------------
-def admin_cols(cur) -> set[str]:
-    cur.execute("PRAGMA table_info(admin_auth)")
-    return {r["name"] for r in cur.fetchall()}
-
-
+# =========================
+# Admin init + auth
+# =========================
 def ensure_admin_exists():
     conn = get_conn()
     cur = conn.cursor()
-
-    cols = admin_cols(cur)
-
-    # Ensure at least one row exists
     cur.execute("SELECT COUNT(*) AS n FROM admin_auth")
-    if cur.fetchone()["n"] > 0:
-        conn.close()
-        return
+    n = cur.fetchone()["n"]
 
-    # Get password
-    admin_pw = None
-    try:
-        admin_pw = st.secrets.get("ADMIN_PASSWORD", None)
-    except Exception:
+    if n == 0:
+        # Recommended: set ADMIN_PASSWORD in Streamlit Secrets
         admin_pw = None
-    if not admin_pw:
-        admin_pw = os.getenv("ADMIN_PASSWORD") or "admin123"
+        try:
+            admin_pw = st.secrets.get("ADMIN_PASSWORD", None)
+        except Exception:
+            admin_pw = None
+        if not admin_pw:
+            admin_pw = os.getenv("ADMIN_PASSWORD") or "admin123"
 
-    # Insert depending on schema
-    if "password_hash" in cols:
         ph = pbkdf2_hash_password(admin_pw)
-        if "created_at" in cols:
-            cur.execute(
-                "INSERT INTO admin_auth(password_hash, created_at) VALUES (?, ?)",
-                (ph, now_iso()),
-            )
-        else:
-            cur.execute("INSERT INTO admin_auth(password_hash) VALUES (?)", (ph,))
-    elif "password" in cols:
-        cur.execute("INSERT INTO admin_auth(password) VALUES (?)", (admin_pw,))
-    else:
-        cur.execute("INSERT INTO admin_auth DEFAULT VALUES")
+        cur.execute(
+            "INSERT INTO admin_auth(password_hash, created_at) VALUES (?, ?)",
+            (ph, now_iso())
+        )
+        conn.commit()
 
-    conn.commit()
     conn.close()
 
 
-def get_admin_credential() -> tuple[str | None, str]:
+def get_admin_hash() -> str | None:
     conn = get_conn()
     cur = conn.cursor()
-    cols = admin_cols(cur)
-
-    if "password_hash" in cols:
-        cur.execute("SELECT password_hash AS v FROM admin_auth ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
-        return (row["v"] if row else None), "hash"
-
-    if "password" in cols:
-        cur.execute("SELECT password AS v FROM admin_auth ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-        conn.close()
-        return (row["v"] if row else None), "plain"
-
+    cur.execute("SELECT password_hash FROM admin_auth ORDER BY id LIMIT 1")
+    row = cur.fetchone()
     conn.close()
-    return None, "none"
+    return row["password_hash"] if row else None
 
 
 def ensure_defaults():
@@ -253,9 +217,9 @@ def ensure_defaults():
     ensure_admin_exists()
 
 
-# ----------------------------
+# =========================
 # Session
-# ----------------------------
+# =========================
 def init_session():
     st.session_state.setdefault("logged_in", False)
     st.session_state.setdefault("user_id", None)
@@ -275,9 +239,9 @@ def logout_admin():
     st.session_state["admin_logged_in"] = False
 
 
-# ----------------------------
-# Data
-# ----------------------------
+# =========================
+# Data helpers
+# =========================
 def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     conn = get_conn()
     cur = conn.cursor()
@@ -285,18 +249,18 @@ def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     cur.execute("SELECT id FROM users WHERE phone=?", (phone,))
     row = cur.fetchone()
     if row:
-        user_id = int(row["id"])
-        cur.execute("UPDATE users SET name=?, email=? WHERE id=?", (name, email, user_id))
+        uid = int(row["id"])
+        cur.execute("UPDATE users SET name=?, email=? WHERE id=?", (name, email, uid))
     else:
         cur.execute(
             "INSERT INTO users(phone, name, email, created_at) VALUES (?, ?, ?, ?)",
             (phone, name, email, now_iso()),
         )
-        user_id = cur.lastrowid
+        uid = cur.lastrowid
 
     conn.commit()
     conn.close()
-    return int(user_id)
+    return int(uid)
 
 
 def create_order(user_id: int, product_name: str, amount_xaf: float,
@@ -380,15 +344,15 @@ def get_stats():
     orders_n = cur.fetchone()["n"]
 
     cur.execute("SELECT COALESCE(SUM(total_xaf), 0) AS s FROM orders")
-    sum_total = cur.fetchone()["s"]
+    total_sum = cur.fetchone()["s"]
 
     conn.close()
-    return users_n, orders_n, sum_total
+    return users_n, orders_n, total_sum
 
 
-# ----------------------------
+# =========================
 # UI
-# ----------------------------
+# =========================
 def sidebar():
     st.sidebar.markdown(f"## {APP_TITLE}")
     st.sidebar.caption("MVP — Facilitateur de paiement international (Phase pilote)")
@@ -542,18 +506,12 @@ def page_admin():
         pw = st.text_input("Mot de passe admin", type="password")
 
         if st.button("Se connecter (Admin)"):
-            stored, mode = get_admin_credential()
+            stored = get_admin_hash()
             if not stored:
                 st.error("Admin non configuré.")
                 return
 
-            ok = False
-            if mode == "hash":
-                ok = pbkdf2_verify_password(pw, stored)
-            elif mode == "plain":
-                ok = hmac.compare_digest(pw, stored)
-
-            if ok:
+            if pbkdf2_verify_password(pw, stored):
                 st.session_state["admin_logged_in"] = True
                 st.success("Admin connecté ✅")
                 st.rerun()
@@ -568,11 +526,11 @@ def page_admin():
         logout_admin()
         st.rerun()
 
-    users_n, orders_n, sum_total = get_stats()
+    users_n, orders_n, total_sum = get_stats()
     c1, c2, c3 = st.columns(3)
     c1.metric("Utilisateurs", users_n)
     c2.metric("Commandes", orders_n)
-    c3.metric("Total (XAF)", f"{float(sum_total):,.0f}".replace(",", " "))
+    c3.metric("Total (XAF)", f"{float(total_sum):,.0f}".replace(",", " "))
 
     st.divider()
     st.subheader("Mettre à jour Tracking / Statuts")
