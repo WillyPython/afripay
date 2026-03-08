@@ -1,16 +1,32 @@
-# Python / Streamlit
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Local DB & uploads
+# Local database
 afripay.db
+*.db
+
+# Uploads / temp files
 uploads/
 
-# Env secrets
+# Backup folders
+AFRIPAY BACKUP/
+
+# Environment variables
 .env
 
-# OS/Editor
-.DS_Store
-.vscode/dir
-
+# Streamlit secrets
 .streamlit/secrets.toml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# Logs
+*.log
