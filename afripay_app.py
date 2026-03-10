@@ -14,10 +14,10 @@ from services.order_service import (
     get_order_by_code,
 )
 from services.admin_service import (
-    ensure_defaults,
     pbkdf2_verify_password,
     get_admin_hash,
 )
+from services.settings_service import ensure_defaults
 
 
 def format_xaf(value):
