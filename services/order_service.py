@@ -1,189 +1,139 @@
-import math
 from datetime import datetime
 
-from config.settings import now_iso
 from data.database import get_conn
-from services.admin_service import get_setting
 
 
-def _safe_float(value, default=0.0):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return float(default)
+DEFAULT_EXCHANGE_RATE = 655.0
 
 
-def round_xaf(value):
-    """
-    Règle AfriPay / XAF :
-    - pas de centimes
-    - si entier exact, on garde l'entier
-    - sinon, on arrondit au franc supérieur
-    Exemples :
-    234.00 -> 234
-    234.01 -> 235
-    234.19 -> 235
-    """
-    value = _safe_float(value, 0.0)
-    return int(value) if float(value).is_integer() else math.ceil(value)
+def _round_xaf(value: float) -> int:
+    value = float(value or 0)
+    rounded = int(value) if value.is_integer() else int(value) + 1
+    return rounded
 
 
-def format_xaf_number(value):
-    return f"{round_xaf(value):,}".replace(",", ".")
-
-
-def round_eur(value):
-    """
-    L'EUR reste avec 2 décimales.
-    """
-    return round(_safe_float(value, 0.0), 2)
-
-
-def get_current_rate():
-    rate = get_setting("eur_xaf_rate", "655.957")
-    return _safe_float(rate, 655.957)
-
-
-def generate_order_code():
+def _generate_order_code() -> str:
     conn = get_conn()
     cur = conn.cursor()
 
-    year = datetime.utcnow().strftime("%Y")
-
-    cur.execute(
-        "SELECT COUNT(*) AS n FROM orders WHERE substr(created_at, 1, 4) = ?",
-        (year,),
-    )
-    row = cur.fetchone()
-    count = int(row["n"]) if row else 0
-
-    conn.close()
-    return f"CMD-{year}-{count + 1:03d}"
-
-
-def create_order_for_user(
-    user_id,
-    site_name,
-    product_url,
-    product_title,
-    product_specs,
-    product_price_eur,
-    shipping_estimate_eur,
-    delivery_address,
-    momo_provider=None,
-):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    eur_xaf_rate_used = get_current_rate()
-
-    site_name = (site_name or "").strip()
-    product_url = (product_url or "").strip()
-    product_title = (product_title or "").strip()
-    product_specs = (product_specs or "").strip()
-    delivery_address = (delivery_address or "").strip()
-    momo_provider = (momo_provider or "").strip() or None
-
-    product_price_eur = round_eur(product_price_eur)
-    shipping_estimate_eur = round_eur(shipping_estimate_eur)
-
-    # Le client saisit le total marchand + transport via les champs EUR actuels
-    subtotal_eur = round_eur(product_price_eur + shipping_estimate_eur)
-
-    # Commission AfriPay (8%)
-    commission_eur = round_eur(subtotal_eur * 0.08)
-
-    # Total final côté AfriPay
-    total_to_pay_eur = round_eur(subtotal_eur + commission_eur)
-
-    # Conversion XAF
-    seller_fee_xaf = round_xaf(subtotal_eur * eur_xaf_rate_used)
-    afripay_fee_xaf = round_xaf(commission_eur * eur_xaf_rate_used)
-    total_xaf = round_xaf(total_to_pay_eur * eur_xaf_rate_used)
-
-    created_at = now_iso()
-    updated_at = created_at
-    order_code = generate_order_code()
-
-    payment_reference = f"PAY-{order_code}"
-    payment_status = "EN_ATTENTE"
-    order_status = "CREEE"
+    year = datetime.now().year
+    prefix = f"CMD-{year}-"
 
     cur.execute(
         """
-        INSERT INTO orders(
+        SELECT order_code
+        FROM orders
+        WHERE order_code LIKE %s
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (f"{prefix}%",),
+    )
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return f"{prefix}001"
+
+    last_code = row["order_code"] if isinstance(row, dict) else row[0]
+
+    try:
+        last_number = int(str(last_code).split("-")[-1])
+    except Exception:
+        last_number = 0
+
+    return f"{prefix}{last_number + 1:03d}"
+
+
+def create_order_for_user(
+    user_id: int,
+    site_name: str,
+    product_url: str,
+    product_title: str,
+    product_specs: str,
+    product_price_eur: float,
+    shipping_estimate_eur: float,
+    delivery_address: str,
+    momo_provider: str | None = None,
+) -> str:
+    conn = get_conn()
+    cur = conn.cursor()
+
+    total_to_pay_eur = float(product_price_eur or 0) + float(shipping_estimate_eur or 0)
+    total_xaf = _round_xaf(total_to_pay_eur * DEFAULT_EXCHANGE_RATE)
+
+    seller_fee_xaf = 0
+    afripay_fee_xaf = 0
+    order_code = _generate_order_code()
+
+    cur.execute(
+        """
+        INSERT INTO orders (
             user_id,
+            order_code,
             site_name,
             product_url,
             product_title,
+            product_name,
             product_specs,
-            product_image_path,
             product_price_eur,
             shipping_estimate_eur,
-            commission_eur,
             total_to_pay_eur,
-            eur_xaf_rate_used,
-            total_to_pay_xaf,
-            delivery_address,
-            client_ack,
-            payment_reference,
-            payment_status,
-            momo_provider,
-            momo_tx_id,
-            payment_proof_path,
-            purchase_proof_path,
-            tracking_number,
-            tracking_url,
-            order_status,
-            created_at,
-            updated_at,
-            order_code,
+            total_xaf,
             seller_fee_xaf,
             afripay_fee_xaf,
-            total_xaf
+            delivery_address,
+            momo_provider,
+            order_status,
+            payment_status,
+            merchant_status,
+            merchant_order_number,
+            merchant_confirmation_url,
+            merchant_tracking_url,
+            merchant_purchase_date,
+            created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+        )
         """,
         (
             int(user_id),
+            order_code,
             site_name,
             product_url,
             product_title,
+            product_title,
             product_specs,
-            None,
-            product_price_eur,
-            shipping_estimate_eur,
-            commission_eur,
+            float(product_price_eur or 0),
+            float(shipping_estimate_eur or 0),
             total_to_pay_eur,
-            eur_xaf_rate_used,
             total_xaf,
-            delivery_address,
-            1,
-            payment_reference,
-            payment_status,
-            momo_provider,
-            None,
-            None,
-            None,
-            None,
-            None,
-            order_status,
-            created_at,
-            updated_at,
-            order_code,
             seller_fee_xaf,
             afripay_fee_xaf,
-            total_xaf,
+            delivery_address,
+            momo_provider,
+            "CREEE",
+            "EN_ATTENTE",
+            "",
+            "",
+            "",
+            "",
+            None,
         ),
     )
 
     conn.commit()
+    cur.close()
     conn.close()
 
     return order_code
 
 
-def list_orders_for_user(user_id):
+def list_orders_for_user(user_id: int):
     conn = get_conn()
     cur = conn.cursor()
 
@@ -191,114 +141,138 @@ def list_orders_for_user(user_id):
         """
         SELECT
             id,
+            user_id,
             order_code,
-            product_title AS product_name,
-            product_title,
             site_name,
             product_url,
+            product_title,
+            product_name,
             product_specs,
             product_price_eur,
             shipping_estimate_eur,
-            commission_eur,
             total_to_pay_eur,
-            eur_xaf_rate_used,
-            total_to_pay_xaf,
+            total_xaf,
             seller_fee_xaf,
             afripay_fee_xaf,
-            total_xaf,
             delivery_address,
-            payment_reference,
-            payment_status,
             momo_provider,
             order_status,
-            created_at,
-            updated_at,
+            payment_status,
+            merchant_status,
             merchant_order_number,
             merchant_confirmation_url,
             merchant_tracking_url,
             merchant_purchase_date,
-            merchant_status
+            created_at
         FROM orders
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY id DESC
         """,
         (int(user_id),),
     )
-
     rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     return rows
 
 
-def get_order_by_code(order_code):
+def get_order_by_code(order_code: str):
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute(
         """
         SELECT
-            o.*,
-            u.name AS user_name,
-            u.phone AS user_phone,
-            u.email AS user_email
-        FROM orders o
-        LEFT JOIN users u ON u.id = o.user_id
-        WHERE o.order_code = ?
+            id,
+            user_id,
+            order_code,
+            site_name,
+            product_url,
+            product_title,
+            product_name,
+            product_specs,
+            product_price_eur,
+            shipping_estimate_eur,
+            total_to_pay_eur,
+            total_xaf,
+            seller_fee_xaf,
+            afripay_fee_xaf,
+            delivery_address,
+            momo_provider,
+            order_status,
+            payment_status,
+            merchant_status,
+            merchant_order_number,
+            merchant_confirmation_url,
+            merchant_tracking_url,
+            merchant_purchase_date,
+            created_at
+        FROM orders
+        WHERE order_code = %s
         LIMIT 1
         """,
-        ((order_code or "").strip().upper(),),
+        (order_code.strip(),),
     )
-
     row = cur.fetchone()
+
+    cur.close()
     conn.close()
+
     return row
 
 
-def list_orders_all(limit=None):
+def list_orders_all():
     conn = get_conn()
     cur = conn.cursor()
 
-    if limit is None:
-        cur.execute(
-            """
-            SELECT
-                o.*,
-                u.name AS user_name,
-                u.phone AS user_phone,
-                u.email AS user_email
-            FROM orders o
-            LEFT JOIN users u ON u.id = o.user_id
-            ORDER BY o.id DESC
-            """
-        )
-    else:
-        cur.execute(
-            """
-            SELECT
-                o.*,
-                u.name AS user_name,
-                u.phone AS user_phone,
-                u.email AS user_email
-            FROM orders o
-            LEFT JOIN users u ON u.id = o.user_id
-            ORDER BY o.id DESC
-            LIMIT ?
-            """,
-            (int(limit),),
-        )
-
+    cur.execute(
+        """
+        SELECT
+            id,
+            user_id,
+            order_code,
+            site_name,
+            product_url,
+            product_title,
+            product_name,
+            product_specs,
+            product_price_eur,
+            shipping_estimate_eur,
+            total_to_pay_eur,
+            total_xaf,
+            seller_fee_xaf,
+            afripay_fee_xaf,
+            delivery_address,
+            momo_provider,
+            order_status,
+            payment_status,
+            merchant_status,
+            merchant_order_number,
+            merchant_confirmation_url,
+            merchant_tracking_url,
+            merchant_purchase_date,
+            created_at
+        FROM orders
+        ORDER BY id DESC
+        """
+    )
     rows = cur.fetchall()
+
+    cur.close()
     conn.close()
+
     return rows
 
 
 def update_merchant_info(
-    order_id,
-    merchant_order_number,
-    merchant_confirmation_url,
-    merchant_tracking_url,
-    merchant_purchase_date,
-    merchant_status,
+    order_id: int,
+    merchant_order_number: str = "",
+    merchant_confirmation_url: str = "",
+    merchant_tracking_url: str = "",
+    merchant_purchase_date: str = "",
+    merchant_status: str = "",
 ):
     conn = get_conn()
     cur = conn.cursor()
@@ -306,25 +280,23 @@ def update_merchant_info(
     cur.execute(
         """
         UPDATE orders
-        SET
-            merchant_order_number = ?,
-            merchant_confirmation_url = ?,
-            merchant_tracking_url = ?,
-            merchant_purchase_date = ?,
-            merchant_status = ?,
-            updated_at = ?
-        WHERE id = ?
+        SET merchant_order_number = %s,
+            merchant_confirmation_url = %s,
+            merchant_tracking_url = %s,
+            merchant_purchase_date = %s,
+            merchant_status = %s
+        WHERE id = %s
         """,
         (
-            (merchant_order_number or "").strip() or None,
-            (merchant_confirmation_url or "").strip() or None,
-            (merchant_tracking_url or "").strip() or None,
-            (merchant_purchase_date or "").strip() or None,
-            (merchant_status or "").strip() or None,
-            now_iso(),
+            merchant_order_number,
+            merchant_confirmation_url,
+            merchant_tracking_url,
+            merchant_purchase_date or None,
+            merchant_status,
             int(order_id),
         ),
     )
 
     conn.commit()
+    cur.close()
     conn.close()
