@@ -1,137 +1,52 @@
-from config.settings import now_iso
 from data.database import get_conn
 
 
-def normalize_phone(phone):
-    """
-    Normalise le numéro sans le dénaturer :
-    - supprime les espaces
-    - supprime les parenthèses
-    - supprime les tirets
-    - garde le + si présent
-    """
-    phone = str(phone or "").strip()
-    phone = phone.replace(" ", "")
-    phone = phone.replace("-", "")
-    phone = phone.replace("(", "")
-    phone = phone.replace(")", "")
-    return phone
+def normalize_phone(phone: str) -> str:
+    return phone.strip()
 
 
-def clean_text(value):
-    return str(value or "").strip()
-
-
-def upsert_user(phone, name="", email=""):
-    """
-    Crée l'utilisateur si le téléphone n'existe pas,
-    sinon met à jour les informations utiles.
-    Retourne toujours l'id utilisateur.
-    """
-    normalized_phone = normalize_phone(phone)
-    clean_name = clean_text(name)
-    clean_email = clean_text(email)
-
-    if not normalized_phone:
-        raise ValueError("Le téléphone est obligatoire.")
-
+def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     conn = get_conn()
     cur = conn.cursor()
 
+    normalized_phone = normalize_phone(phone)
+
+    # vérifier si utilisateur existe
     cur.execute(
-        """
-        SELECT id, name, email
-        FROM users
-        WHERE phone = ?
-        LIMIT 1
-        """,
-        (normalized_phone,),
+        "SELECT id FROM users WHERE phone = %s LIMIT 1",
+        (normalized_phone,)
     )
+
     row = cur.fetchone()
 
     if row:
-        user_id = int(row["id"])
-
-        existing_name = clean_text(row["name"])
-        existing_email = clean_text(row["email"])
-
-        new_name = clean_name or existing_name
-        new_email = clean_email or existing_email
+        user_id = row["id"] if isinstance(row, dict) else row[0]
 
         cur.execute(
             """
             UPDATE users
-            SET name = ?, email = ?
-            WHERE id = ?
+            SET name = %s,
+                email = %s
+            WHERE id = %s
             """,
-            (new_name or None, new_email or None, user_id),
+            (name, email, user_id)
         )
 
-        conn.commit()
-        conn.close()
-        return user_id
+    else:
+        cur.execute(
+            """
+            INSERT INTO users (phone, name, email)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (normalized_phone, name, email)
+        )
 
-    created_at = now_iso()
-
-    cur.execute(
-        """
-        INSERT INTO users(phone, name, email, created_at)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            normalized_phone,
-            clean_name or None,
-            clean_email or None,
-            created_at,
-        ),
-    )
-
-    user_id = cur.lastrowid
+        row = cur.fetchone()
+        user_id = row["id"] if isinstance(row, dict) else row[0]
 
     conn.commit()
+    cur.close()
     conn.close()
 
-    return int(user_id)
-
-
-def get_user_by_phone(phone):
-    normalized_phone = normalize_phone(phone)
-
-    if not normalized_phone:
-        return None
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT id, phone, name, email, created_at
-        FROM users
-        WHERE phone = ?
-        LIMIT 1
-        """,
-        (normalized_phone,),
-    )
-
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-
-def get_user_by_id(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT id, phone, name, email, created_at
-        FROM users
-        WHERE id = ?
-        LIMIT 1
-        """,
-        (int(user_id),),
-    )
-
-    row = cur.fetchone()
-    conn.close()
-    return row
+    return user_id
