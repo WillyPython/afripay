@@ -7,10 +7,8 @@ def ensure_settings_table():
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS settings (
-            id SERIAL PRIMARY KEY,
-            key TEXT UNIQUE NOT NULL,
-            value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            key TEXT PRIMARY KEY,
+            value TEXT
         )
     """)
 
@@ -45,21 +43,14 @@ def set_setting(key: str, value: str):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT id FROM settings WHERE key = %s LIMIT 1",
-        (key,)
+        """
+        INSERT INTO settings (key, value)
+        VALUES (%s, %s)
+        ON CONFLICT (key)
+        DO UPDATE SET value = EXCLUDED.value
+        """,
+        (key, value)
     )
-    row = cur.fetchone()
-
-    if row:
-        cur.execute(
-            "UPDATE settings SET value = %s WHERE key = %s",
-            (value, key)
-        )
-    else:
-        cur.execute(
-            "INSERT INTO settings (key, value) VALUES (%s, %s)",
-            (key, value)
-        )
 
     conn.commit()
     cur.close()
