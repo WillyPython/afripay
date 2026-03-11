@@ -68,7 +68,6 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id SERIAL PRIMARY KEY,
-            order_code TEXT UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -76,6 +75,7 @@ def init_db():
     # -------------------------
     # Migration progressive ORDERS
     # -------------------------
+    add_column_if_missing(cur, "orders", "order_code", "TEXT")
     add_column_if_missing(cur, "orders", "user_id", "INTEGER")
     add_column_if_missing(cur, "orders", "site_name", "TEXT")
     add_column_if_missing(cur, "orders", "product_url", "TEXT")
@@ -97,6 +97,30 @@ def init_db():
     add_column_if_missing(cur, "orders", "merchant_confirmation_url", "TEXT")
     add_column_if_missing(cur, "orders", "merchant_tracking_url", "TEXT")
     add_column_if_missing(cur, "orders", "merchant_purchase_date", "TEXT")
+
+    # rendre order_code unique si possible
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'orders'
+                  AND indexname = 'orders_order_code_key'
+            ) THEN
+                BEGIN
+                    ALTER TABLE orders ADD CONSTRAINT orders_order_code_key UNIQUE (order_code);
+                EXCEPTION
+                    WHEN duplicate_table THEN
+                        NULL;
+                    WHEN duplicate_object THEN
+                        NULL;
+                END;
+            END IF;
+        END
+        $$;
+    """)
 
     conn.commit()
     cur.close()
