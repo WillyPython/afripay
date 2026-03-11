@@ -31,7 +31,6 @@ def create_order_for_user(
     cur = conn.cursor()
 
     order_code = generate_order_code()
-
     total_eur = float(product_price_eur or 0) + float(shipping_estimate_eur or 0)
 
     cur.execute(
@@ -41,6 +40,7 @@ def create_order_for_user(
             user_id,
             site_name,
             product_title,
+            product_name,
             product_specs,
             product_url,
             product_price_eur,
@@ -53,7 +53,7 @@ def create_order_for_user(
             created_at
         )
         VALUES (
-            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             'CREEE',
             'EN_ATTENTE',
             NOW()
@@ -65,17 +65,19 @@ def create_order_for_user(
             int(user_id),
             site_name,
             product_title,
+            product_title,
             product_specs,
             product_url,
-            product_price_eur,
-            shipping_estimate_eur,
+            float(product_price_eur or 0),
+            float(shipping_estimate_eur or 0),
             total_eur,
             delivery_address,
             momo_provider,
         ),
     )
 
-    result = cur.fetchone()[0]
+    row = cur.fetchone()
+    result = row["order_code"] if row else order_code
 
     conn.commit()
     cur.close()
