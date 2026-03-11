@@ -6,8 +6,20 @@ import streamlit as st
 
 from config.settings import APP_TITLE
 from data.database import init_db
-from core.session import init_session, logout_user, logout_admin
+from core.session import (
+    init_session,
+    logout_user,
+    logout_admin,
+    login_user,
+    restore_user_session,
+)
 from services.user_service import upsert_user
+from services.auth_session_service import (
+    create_user_session,
+    get_active_session,
+    touch_session,
+    deactivate_session,
+)
 from services.order_service import (
     create_order_for_user,
     list_orders_for_user,
@@ -148,6 +160,51 @@ def render_logistics_timeline(order, title="Timeline logistique"):
         st.caption(step["detail"])
 
 
+def save_session_token_in_query_params(token: str | None) -> None:
+    """
+    Sauvegarde ou supprime le token de session dans l'URL.
+    """
+    if token:
+        st.query_params["session_token"] = token
+    else:
+        try:
+            del st.query_params["session_token"]
+        except Exception:
+            pass
+
+
+def restore_session_from_query_params() -> None:
+    """
+    Restaure automatiquement la session utilisateur si un token valide
+    est présent dans l'URL.
+    """
+    if st.session_state.get("logged_in"):
+        token = st.session_state.get("session_token")
+        if token:
+            touch_session(token)
+        return
+
+    token = st.query_params.get("session_token")
+
+    if not token:
+        return
+
+    row = get_active_session(token)
+
+    if not row:
+        save_session_token_in_query_params(None)
+        return
+
+    restore_user_session(
+        user_id=row["user_id"],
+        phone=row.get("phone", ""),
+        name=row.get("name", ""),
+        session_token=row["session_token"],
+    )
+
+    touch_session(token)
+
+
 def render_sidebar() -> str:
     st.sidebar.image("assets/logo.png", width=190)
     st.sidebar.markdown("---")
@@ -188,6 +245,12 @@ def render_sidebar() -> str:
     if st.session_state.get("logged_in"):
         st.sidebar.success("Connecté ✅")
         if st.sidebar.button("Déconnexion"):
+            token = st.session_state.get("session_token")
+
+            if token:
+                deactivate_session(token)
+
+            save_session_token_in_query_params(None)
             logout_user()
             st.rerun()
     else:
@@ -242,14 +305,30 @@ def page_connexion() -> None:
             st.error("OTP incorrect.")
             return
 
+        clean_phone = phone.strip()
+        clean_name = name.strip()
+        clean_email = email.strip()
+
         user_id = upsert_user(
-            phone=phone.strip(),
-            name=name.strip(),
-            email=email.strip(),
+            phone=clean_phone,
+            name=clean_name,
+            email=clean_email,
         )
 
-        st.session_state["logged_in"] = True
-        st.session_state["user_id"] = user_id
+        session_token = create_user_session(
+            user_id=user_id,
+            phone=clean_phone,
+        )
+
+        login_user(
+            user_id=user_id,
+            phone=clean_phone,
+            name=clean_name,
+            session_token=session_token,
+        )
+
+        save_session_token_in_query_params(session_token)
+
         st.success("Connexion réussie ✅")
         st.rerun()
 
@@ -669,6 +748,7 @@ def main() -> None:
     init_db()
     ensure_defaults()
     init_session()
+    restore_session_from_query_params()
 
     menu = render_sidebar()
 
