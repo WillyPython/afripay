@@ -41,12 +41,11 @@ COOKIE_PASSWORD = os.getenv("COOKIE_PASSWORD", "afripay-cookie-secret-dev")
 
 
 # =========================================================
-# COOKIE MANAGER (lazy init after page_config)
+# COOKIE MANAGER
 # =========================================================
 def get_cookie_manager():
     """
-    Initialise le cookie manager seulement après st.set_page_config(),
-    afin d'éviter les comportements instables au refresh.
+    Initialise le cookie manager après set_page_config.
     """
     if "_afripay_cookie_manager" not in st.session_state:
         st.session_state["_afripay_cookie_manager"] = EncryptedCookieManager(
@@ -191,9 +190,6 @@ def render_logistics_timeline(order, title="Timeline logistique"):
 # COOKIE SESSION MANAGEMENT
 # =========================================================
 def save_session_token_in_cookie(token: str | None) -> None:
-    """
-    Sauvegarde ou supprime le token de session dans un cookie navigateur.
-    """
     cookies = get_cookie_manager()
 
     if token:
@@ -202,22 +198,28 @@ def save_session_token_in_cookie(token: str | None) -> None:
         if "session_token" in cookies:
             del cookies["session_token"]
 
-    cookies.save()
+    try:
+        cookies.save()
+    except Exception:
+        pass
 
 
 def restore_session_from_cookie() -> bool:
-    """
-    Restaure automatiquement la session utilisateur si un token valide
-    est présent dans le cookie navigateur.
-    """
     if st.session_state.get("logged_in"):
         token = st.session_state.get("session_token")
         if token:
-            touch_session(token)
+            try:
+                touch_session(token)
+            except Exception:
+                pass
         return True
 
     cookies = get_cookie_manager()
-    token = cookies.get("session_token")
+
+    try:
+        token = cookies.get("session_token")
+    except Exception:
+        return False
 
     if not token:
         return False
@@ -228,7 +230,10 @@ def restore_session_from_cookie() -> bool:
         save_session_token_in_cookie(None)
         return False
 
-    row = get_active_session(token)
+    try:
+        row = get_active_session(token)
+    except Exception:
+        return False
 
     if not row:
         save_session_token_in_cookie(None)
@@ -241,17 +246,15 @@ def restore_session_from_cookie() -> bool:
         session_token=row["session_token"],
     )
 
-    touch_session(token)
+    try:
+        touch_session(token)
+    except Exception:
+        pass
+
     return True
 
 
 def logout_user_everywhere() -> None:
-    """
-    Déconnecte proprement :
-    - désactive la session en base
-    - supprime le cookie navigateur
-    - vide session_state utilisateur
-    """
     token = st.session_state.get("session_token")
 
     if token:
@@ -523,31 +526,6 @@ def page_dashboard_client() -> None:
 
     render_logistics_timeline(latest)
 
-    merchant_order_number = safe_get(latest, "merchant_order_number", "")
-    merchant_confirmation_url = safe_get(latest, "merchant_confirmation_url", "")
-    merchant_tracking_url = safe_get(latest, "merchant_tracking_url", "")
-    merchant_purchase_date = safe_get(latest, "merchant_purchase_date", "")
-    merchant_status = safe_get(latest, "merchant_status", "")
-
-    if any([
-        merchant_order_number,
-        merchant_confirmation_url,
-        merchant_tracking_url,
-        merchant_purchase_date,
-        merchant_status,
-    ]):
-        st.markdown("### Informations marchand")
-        if merchant_order_number:
-            st.write(f"**Numéro commande marchand :** {merchant_order_number}")
-        if merchant_purchase_date:
-            st.write(f"**Date d'achat :** {merchant_purchase_date}")
-        if merchant_status:
-            st.write(f"**Statut marchand :** {merchant_status}")
-        if merchant_confirmation_url:
-            st.write(f"**Lien confirmation :** {merchant_confirmation_url}")
-        if merchant_tracking_url:
-            st.write(f"**Lien suivi :** {merchant_tracking_url}")
-
 
 def page_tracking() -> None:
     st.title("Suivre une commande")
@@ -577,33 +555,6 @@ def page_tracking() -> None:
 
         render_logistics_timeline(row)
 
-        merchant_status = safe_get(row, "merchant_status", "")
-        merchant_order_number = safe_get(row, "merchant_order_number", "")
-        merchant_confirmation_url = safe_get(row, "merchant_confirmation_url", "")
-        merchant_tracking_url = safe_get(row, "merchant_tracking_url", "")
-        merchant_purchase_date = safe_get(row, "merchant_purchase_date", "")
-
-        if any([
-            merchant_status,
-            merchant_order_number,
-            merchant_confirmation_url,
-            merchant_tracking_url,
-            merchant_purchase_date,
-        ]):
-            st.subheader("Informations marchand")
-            if merchant_order_number:
-                st.write("**Numéro commande marchand :**", merchant_order_number)
-            if merchant_purchase_date:
-                st.write("**Date d'achat :**", merchant_purchase_date)
-            if merchant_status:
-                st.write("**Statut marchand :**", merchant_status)
-            if merchant_confirmation_url:
-                st.write("**Lien confirmation :**", merchant_confirmation_url)
-            if merchant_tracking_url:
-                st.write("**Lien suivi :**", merchant_tracking_url)
-        else:
-            st.info("Les informations marchand ne sont pas encore disponibles.")
-
 
 def page_simuler() -> None:
     st.title("Simuler paiement")
@@ -628,43 +579,22 @@ def page_creer_commande() -> None:
         "Le client reste responsable du dédouanement et de la livraison finale via son transitaire / agent."
     )
 
-    st.markdown("### Informations importantes à valider")
-
-    st.warning(
-        "Message juridique : AfriPay agit comme facilitateur de paiement international. "
-        "AfriPay n'assure pas le dédouanement ni la livraison finale. "
-        "Le client demeure responsable de son transitaire, de l'adresse de réception finale "
-        "et des formalités éventuelles liées à l'importation."
-    )
-
-    st.info(
-        "Message opérationnel : pour éviter toute erreur, le client doit saisir le montant total affiché par le marchand "
-        "et renseigner l'adresse de son transitaire / agence, qui pourra aussi servir d'adresse de livraison sur le site marchand."
-    )
-
     with st.form("create_order_form"):
         site_name = st.text_input("Site marchand", placeholder="Amazon, Temu, Zara...")
         product_url = st.text_input("Lien produit")
         product_title = st.text_input("Nom du produit / commande")
-        product_specs = st.text_area(
-            "Caractéristiques / variantes",
-            placeholder="Taille, couleur, quantité...",
-        )
+        product_specs = st.text_area("Caractéristiques / variantes", placeholder="Taille, couleur, quantité...")
 
         col1, col2 = st.columns(2)
-
         with col1:
             product_price_eur = st.number_input("Montant produit (EUR)", min_value=0.0, value=0.0, step=1.0)
-
         with col2:
             shipping_estimate_eur = st.number_input("Transport / livraison (EUR)", min_value=0.0, value=0.0, step=1.0)
 
         delivery_address = st.text_area("Adresse agence / transitaire (obligatoire)")
         momo_provider = st.selectbox("Opérateur Mobile Money", ["", "MTN", "Orange"], index=0)
 
-        client_ack = st.checkbox(
-            "Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus."
-        )
+        client_ack = st.checkbox("Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus.")
 
         total_eur = product_price_eur + shipping_estimate_eur
         st.caption(f"Total estimé : {format_eur(total_eur)} EUR")
@@ -730,38 +660,10 @@ def page_mes_commandes() -> None:
             st.write(f"**Marchand :** {safe_get(row, 'site_name', '—')}")
             st.write(f"**Montant XAF :** {format_xaf(total)} XAF")
             st.write(f"**Montant EUR :** {format_eur(total_eur)} €")
-            st.write(f"**Frais vendeur :** {format_xaf(safe_get(row, 'seller_fee_xaf', 0))} XAF")
-            st.write(f"**Frais AfriPay :** {format_xaf(safe_get(row, 'afripay_fee_xaf', 0))} XAF")
-            st.write(f"**Adresse agence / transitaire :** {safe_get(row, 'delivery_address', '—')}")
             st.write(f"**Paiement :** {safe_get(row, 'payment_status', '—')}")
             st.write(f"**Statut :** {normalize_status(status)}")
 
             render_logistics_timeline(row, title="Timeline logistique de la commande")
-
-            merchant_order_number = safe_get(row, "merchant_order_number", "")
-            merchant_confirmation_url = safe_get(row, "merchant_confirmation_url", "")
-            merchant_tracking_url = safe_get(row, "merchant_tracking_url", "")
-            merchant_purchase_date = safe_get(row, "merchant_purchase_date", "")
-            merchant_status = safe_get(row, "merchant_status", "")
-
-            if any([
-                merchant_order_number,
-                merchant_confirmation_url,
-                merchant_tracking_url,
-                merchant_purchase_date,
-                merchant_status,
-            ]):
-                st.markdown("### Informations marchand")
-                if merchant_order_number:
-                    st.write(f"**Numéro commande marchand :** {merchant_order_number}")
-                if merchant_purchase_date:
-                    st.write(f"**Date d'achat :** {merchant_purchase_date}")
-                if merchant_status:
-                    st.write(f"**Statut marchand :** {merchant_status}")
-                if merchant_confirmation_url:
-                    st.write(f"**Lien confirmation :** {merchant_confirmation_url}")
-                if merchant_tracking_url:
-                    st.write(f"**Lien suivi :** {merchant_tracking_url}")
 
 
 def page_admin() -> None:
@@ -801,10 +703,6 @@ def page_admin() -> None:
             logout_admin()
             st.rerun()
 
-    st.info(
-        "Clique sur « Ouvrir le Dashboard Admin » pour accéder directement à la page sécurisée admin_dashboard."
-    )
-
 
 # =========================================================
 # MAIN
@@ -818,10 +716,15 @@ def main() -> None:
 
     cookies = get_cookie_manager()
 
-    if not cookies.ready():
-        st.stop()
-
-    restore_session_from_cookie()
+    # IMPORTANT :
+    # On n'arrête plus toute l'application si les cookies ne sont
+    # pas encore prêts. On affiche l'app normalement et on ne tente
+    # la restauration de session que lorsque le cookie manager est prêt.
+    try:
+        if cookies.ready():
+            restore_session_from_cookie()
+    except Exception:
+        pass
 
     menu = render_sidebar()
 
