@@ -13,11 +13,6 @@ DEFAULT_ADMIN_PASSWORD = "Afripay2026!"
 
 
 def pbkdf2_hash_password(password, salt=None, iterations=120_000):
-    """
-    Produit un hash PBKDF2 stockable en base.
-    Format :
-    pbkdf2_sha256$iterations$salt_b64$hash_b64
-    """
     password = str(password or "")
 
     if salt is None:
@@ -37,9 +32,6 @@ def pbkdf2_hash_password(password, salt=None, iterations=120_000):
 
 
 def pbkdf2_verify_password(password, stored_hash):
-    """
-    Vérifie un mot de passe contre le hash PBKDF2 stocké.
-    """
     try:
         algorithm, iterations, salt_b64, hash_b64 = str(stored_hash).split("$", 3)
         if algorithm != "pbkdf2_sha256":
@@ -63,20 +55,26 @@ def pbkdf2_verify_password(password, stored_hash):
 
 def get_secret_admin_password():
     """
-    Lit le mot de passe admin depuis Streamlit Secrets si disponible.
-    Sinon retombe sur une valeur par défaut contrôlée.
+    Priorité :
+    1) variable d'environnement Render
+    2) Streamlit secrets
+    3) valeur par défaut
     """
+    env_value = os.getenv("ADMIN_PASSWORD")
+    if env_value:
+        return str(env_value)
+
     try:
-        value = st.secrets.get("ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
-        return str(value or DEFAULT_ADMIN_PASSWORD)
+        secret_value = st.secrets.get("ADMIN_PASSWORD")
+        if secret_value:
+            return str(secret_value)
     except Exception:
-        return DEFAULT_ADMIN_PASSWORD
+        pass
+
+    return DEFAULT_ADMIN_PASSWORD
 
 
 def ensure_admin_settings_table():
-    """
-    Crée la table settings si elle n'existe pas encore.
-    """
     conn = get_conn()
     cur = conn.cursor()
 
@@ -95,9 +93,6 @@ def ensure_admin_settings_table():
 
 
 def get_setting(key, default=None):
-    """
-    Lit un paramètre système.
-    """
     ensure_admin_settings_table()
 
     conn = get_conn()
@@ -125,9 +120,6 @@ def get_setting(key, default=None):
 
 
 def set_setting(key, value):
-    """
-    Écrit / met à jour un paramètre système.
-    """
     ensure_admin_settings_table()
 
     conn = get_conn()
@@ -148,16 +140,10 @@ def set_setting(key, value):
 
 
 def get_admin_hash():
-    """
-    Retourne le hash admin stocké.
-    """
     return get_setting("admin_password_hash", None)
 
 
 def set_admin_password(new_password):
-    """
-    Met à jour le mot de passe admin en base.
-    """
     new_hash = pbkdf2_hash_password(str(new_password or ""))
     set_setting("admin_password_hash", new_hash)
     return new_hash
@@ -165,10 +151,10 @@ def set_admin_password(new_password):
 
 def ensure_defaults():
     """
-    Initialise les paramètres système minimums :
-    - table settings
-    - hash admin
+    Initialise :
     - taux EUR/XAF
+    - hash admin
+    - met à jour le hash si ADMIN_PASSWORD existe mais qu'aucun hash n'est stocké
     """
     ensure_admin_settings_table()
 
@@ -176,16 +162,13 @@ def ensure_defaults():
     if not current_rate:
         set_setting("eur_xaf_rate", DEFAULT_EUR_XAF_RATE)
 
-    current_admin_hash = get_setting("admin_password_hash", None)
+    current_admin_hash = get_admin_hash()
     if not current_admin_hash:
         admin_password = get_secret_admin_password()
         set_setting("admin_password_hash", pbkdf2_hash_password(admin_password))
 
 
 def get_stats():
-    """
-    Retourne des statistiques cohérentes sous forme de dict.
-    """
     conn = get_conn()
     cur = conn.cursor()
 
