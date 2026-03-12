@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 import streamlit as st
+from streamlit_cookies_manager import EncryptedCookieManager
 
 from config.settings import APP_TITLE
 from data.database import init_db
@@ -32,6 +33,20 @@ from services.admin_service import (
 from services.settings_service import ensure_defaults
 
 
+# =========================================================
+# COOKIE MANAGER
+# =========================================================
+COOKIE_PASSWORD = st.secrets.get("COOKIE_PASSWORD", "afripay-cookie-secret-dev")
+
+cookies = EncryptedCookieManager(
+    prefix="afripay_",
+    password=COOKIE_PASSWORD,
+)
+
+
+# =========================================================
+# HELPERS
+# =========================================================
 def format_xaf(value):
     try:
         value = float(value or 0)
@@ -160,23 +175,26 @@ def render_logistics_timeline(order, title="Timeline logistique"):
         st.caption(step["detail"])
 
 
-def save_session_token_in_query_params(token: str | None) -> None:
+# =========================================================
+# COOKIE SESSION MANAGEMENT
+# =========================================================
+def save_session_token_in_cookie(token: str | None) -> None:
     """
-    Sauvegarde ou supprime le token de session dans l'URL.
+    Sauvegarde ou supprime le token de session dans un cookie navigateur.
     """
     if token:
-        st.query_params["session_token"] = token
+        cookies["session_token"] = token
     else:
-        try:
-            del st.query_params["session_token"]
-        except Exception:
-            pass
+        if "session_token" in cookies:
+            del cookies["session_token"]
+
+    cookies.save()
 
 
-def restore_session_from_query_params() -> None:
+def restore_session_from_cookie() -> None:
     """
     Restaure automatiquement la session utilisateur si un token valide
-    est présent dans l'URL.
+    est présent dans le cookie navigateur.
     """
     if st.session_state.get("logged_in"):
         token = st.session_state.get("session_token")
@@ -184,7 +202,7 @@ def restore_session_from_query_params() -> None:
             touch_session(token)
         return
 
-    token = st.query_params.get("session_token")
+    token = cookies.get("session_token")
 
     if not token:
         return
@@ -192,7 +210,7 @@ def restore_session_from_query_params() -> None:
     row = get_active_session(token)
 
     if not row:
-        save_session_token_in_query_params(None)
+        save_session_token_in_cookie(None)
         return
 
     restore_user_session(
@@ -205,6 +223,9 @@ def restore_session_from_query_params() -> None:
     touch_session(token)
 
 
+# =========================================================
+# SIDEBAR
+# =========================================================
 def render_sidebar() -> str:
     st.sidebar.image("assets/logo.png", width=190)
     st.sidebar.markdown("---")
@@ -250,7 +271,7 @@ def render_sidebar() -> str:
             if token:
                 deactivate_session(token)
 
-            save_session_token_in_query_params(None)
+            save_session_token_in_cookie(None)
             logout_user()
             st.rerun()
     else:
@@ -273,6 +294,9 @@ def render_sidebar() -> str:
     )
 
 
+# =========================================================
+# PAGES
+# =========================================================
 def page_connexion() -> None:
     st.title("Connexion")
 
@@ -327,7 +351,7 @@ def page_connexion() -> None:
             session_token=session_token,
         )
 
-        save_session_token_in_query_params(session_token)
+        save_session_token_in_cookie(session_token)
 
         st.success("Connexion réussie ✅")
         st.rerun()
@@ -742,13 +766,19 @@ def page_admin() -> None:
     )
 
 
+# =========================================================
+# MAIN
+# =========================================================
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
+
+    if not cookies.ready():
+        st.stop()
 
     init_db()
     ensure_defaults()
     init_session()
-    restore_session_from_query_params()
+    restore_session_from_cookie()
 
     menu = render_sidebar()
 
