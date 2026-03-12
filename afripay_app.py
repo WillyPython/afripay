@@ -35,14 +35,25 @@ from services.settings_service import ensure_defaults
 
 
 # =========================================================
-# COOKIE MANAGER
+# CONFIG
 # =========================================================
 COOKIE_PASSWORD = os.getenv("COOKIE_PASSWORD", "afripay-cookie-secret-dev")
 
-cookies = EncryptedCookieManager(
-    prefix="afripay_",
-    password=COOKIE_PASSWORD,
-)
+
+# =========================================================
+# COOKIE MANAGER (lazy init after page_config)
+# =========================================================
+def get_cookie_manager():
+    """
+    Initialise le cookie manager seulement après st.set_page_config(),
+    afin d'éviter les comportements instables au refresh.
+    """
+    if "_afripay_cookie_manager" not in st.session_state:
+        st.session_state["_afripay_cookie_manager"] = EncryptedCookieManager(
+            prefix="afripay_",
+            password=COOKIE_PASSWORD,
+        )
+    return st.session_state["_afripay_cookie_manager"]
 
 
 # =========================================================
@@ -183,8 +194,10 @@ def save_session_token_in_cookie(token: str | None) -> None:
     """
     Sauvegarde ou supprime le token de session dans un cookie navigateur.
     """
+    cookies = get_cookie_manager()
+
     if token:
-        cookies["session_token"] = token
+        cookies["session_token"] = str(token).strip()
     else:
         if "session_token" in cookies:
             del cookies["session_token"]
@@ -192,7 +205,7 @@ def save_session_token_in_cookie(token: str | None) -> None:
     cookies.save()
 
 
-def restore_session_from_cookie() -> None:
+def restore_session_from_cookie() -> bool:
     """
     Restaure automatiquement la session utilisateur si un token valide
     est présent dans le cookie navigateur.
@@ -201,18 +214,25 @@ def restore_session_from_cookie() -> None:
         token = st.session_state.get("session_token")
         if token:
             touch_session(token)
-        return
+        return True
 
+    cookies = get_cookie_manager()
     token = cookies.get("session_token")
 
     if not token:
-        return
+        return False
+
+    token = str(token).strip()
+
+    if not token:
+        save_session_token_in_cookie(None)
+        return False
 
     row = get_active_session(token)
 
     if not row:
         save_session_token_in_cookie(None)
-        return
+        return False
 
     restore_user_session(
         user_id=row["user_id"],
@@ -222,6 +242,27 @@ def restore_session_from_cookie() -> None:
     )
 
     touch_session(token)
+    return True
+
+
+def logout_user_everywhere() -> None:
+    """
+    Déconnecte proprement :
+    - désactive la session en base
+    - supprime le cookie navigateur
+    - vide session_state utilisateur
+    """
+    token = st.session_state.get("session_token")
+
+    if token:
+        try:
+            deactivate_session(token)
+        except Exception:
+            pass
+
+    save_session_token_in_cookie(None)
+    logout_user()
+    st.rerun()
 
 
 # =========================================================
@@ -267,14 +308,7 @@ def render_sidebar() -> str:
     if st.session_state.get("logged_in"):
         st.sidebar.success("Connecté ✅")
         if st.sidebar.button("Déconnexion"):
-            token = st.session_state.get("session_token")
-
-            if token:
-                deactivate_session(token)
-
-            save_session_token_in_cookie(None)
-            logout_user()
-            st.rerun()
+            logout_user_everywhere()
     else:
         st.sidebar.info("Non connecté")
 
@@ -300,6 +334,11 @@ def render_sidebar() -> str:
 # =========================================================
 def page_connexion() -> None:
     st.title("Connexion")
+
+    if st.session_state.get("logged_in"):
+        st.success("Vous êtes déjà connecté ✅")
+        st.info("Accédez au Dashboard Client ou à Mes commandes depuis le menu.")
+        return
 
     phone = st.text_input("Téléphone", placeholder="+2376...")
 
@@ -773,12 +812,15 @@ def page_admin() -> None:
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
 
-    if not cookies.ready():
-        st.stop()
-
     init_db()
     ensure_defaults()
     init_session()
+
+    cookies = get_cookie_manager()
+
+    if not cookies.ready():
+        st.stop()
+
     restore_session_from_cookie()
 
     menu = render_sidebar()
