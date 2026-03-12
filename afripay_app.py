@@ -55,6 +55,17 @@ def get_cookie_manager():
     return st.session_state["_afripay_cookie_manager"]
 
 
+def cookies_are_ready() -> bool:
+    """
+    Vérifie proprement si le cookie manager est prêt.
+    """
+    try:
+        cookies = get_cookie_manager()
+        return bool(cookies.ready())
+    except Exception:
+        return False
+
+
 # =========================================================
 # HELPERS
 # =========================================================
@@ -189,22 +200,36 @@ def render_logistics_timeline(order, title="Timeline logistique"):
 # =========================================================
 # COOKIE SESSION MANAGEMENT
 # =========================================================
-def save_session_token_in_cookie(token: str | None) -> None:
-    cookies = get_cookie_manager()
-
-    if token:
-        cookies["session_token"] = str(token).strip()
-    else:
-        if "session_token" in cookies:
-            del cookies["session_token"]
+def save_session_token_in_cookie(token: str | None) -> bool:
+    """
+    Sauvegarde ou supprime le token de session dans un cookie navigateur.
+    Ne casse jamais l'application si les cookies ne sont pas encore prêts.
+    Retourne True si l'opération a réussi, sinon False.
+    """
+    if not cookies_are_ready():
+        return False
 
     try:
+        cookies = get_cookie_manager()
+
+        if token:
+            cookies["session_token"] = str(token).strip()
+        else:
+            if "session_token" in cookies:
+                del cookies["session_token"]
+
         cookies.save()
+        return True
+
     except Exception:
-        pass
+        return False
 
 
 def restore_session_from_cookie() -> bool:
+    """
+    Restaure automatiquement la session utilisateur si un token valide
+    est présent dans le cookie navigateur.
+    """
     if st.session_state.get("logged_in"):
         token = st.session_state.get("session_token")
         if token:
@@ -214,9 +239,11 @@ def restore_session_from_cookie() -> bool:
                 pass
         return True
 
-    cookies = get_cookie_manager()
+    if not cookies_are_ready():
+        return False
 
     try:
+        cookies = get_cookie_manager()
         token = cookies.get("session_token")
     except Exception:
         return False
@@ -255,6 +282,9 @@ def restore_session_from_cookie() -> bool:
 
 
 def logout_user_everywhere() -> None:
+    """
+    Déconnecte proprement l'utilisateur.
+    """
     token = st.session_state.get("session_token")
 
     if token:
@@ -394,9 +424,15 @@ def page_connexion() -> None:
             session_token=session_token,
         )
 
-        save_session_token_in_cookie(session_token)
+        cookie_saved = save_session_token_in_cookie(session_token)
 
         st.success("Connexion réussie ✅")
+
+        if not cookie_saved:
+            st.info(
+                "Session ouverte. Le cookie navigateur sera disponible au prochain chargement de la page."
+            )
+
         st.rerun()
 
 
@@ -714,17 +750,11 @@ def main() -> None:
     ensure_defaults()
     init_session()
 
-    cookies = get_cookie_manager()
-
-    # IMPORTANT :
-    # On n'arrête plus toute l'application si les cookies ne sont
-    # pas encore prêts. On affiche l'app normalement et on ne tente
-    # la restauration de session que lorsque le cookie manager est prêt.
-    try:
-        if cookies.ready():
+    if cookies_are_ready():
+        try:
             restore_session_from_cookie()
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     menu = render_sidebar()
 
