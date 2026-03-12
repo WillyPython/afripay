@@ -1,3 +1,4 @@
+import os
 import secrets
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -36,7 +37,7 @@ from services.settings_service import ensure_defaults
 # =========================================================
 # COOKIE MANAGER
 # =========================================================
-COOKIE_PASSWORD = st.secrets.get("COOKIE_PASSWORD", "afripay-cookie-secret-dev")
+COOKIE_PASSWORD = os.getenv("COOKIE_PASSWORD", "afripay-cookie-secret-dev")
 
 cookies = EncryptedCookieManager(
     prefix="afripay_",
@@ -745,7 +746,7 @@ def page_admin() -> None:
             else:
                 st.error("Mot de passe incorrect.")
 
-        st.caption("Conseil : définis ADMIN_PASSWORD dans Streamlit Secrets.")
+        st.caption("Conseil : définis ADMIN_PASSWORD dans les variables d’environnement.")
         return
 
     st.success("Bienvenue dans l'espace administration")
