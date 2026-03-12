@@ -90,6 +90,7 @@ def ensure_admin_settings_table():
     )
 
     conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -103,11 +104,12 @@ def get_setting(key, default=None):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT value FROM settings WHERE key = ? LIMIT 1",
+        "SELECT value FROM settings WHERE key = %s LIMIT 1",
         (str(key),),
     )
     row = cur.fetchone()
 
+    cur.close()
     conn.close()
 
     if not row:
@@ -134,13 +136,14 @@ def set_setting(key, value):
     cur.execute(
         """
         INSERT INTO settings(key, value)
-        VALUES(?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        VALUES(%s, %s)
+        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value
         """,
         (str(key), str(value)),
     )
 
     conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -181,15 +184,7 @@ def ensure_defaults():
 
 def get_stats():
     """
-    Retourne des statistiques cohérentes sous forme de dict :
-    - total_orders
-    - paid_orders
-    - in_progress_orders
-    - delivered_orders
-    - cancelled_orders
-    - total_volume_xaf
-    - total_volume_eur
-    - total_users
+    Retourne des statistiques cohérentes sous forme de dict.
     """
     conn = get_conn()
     cur = conn.cursor()
@@ -213,6 +208,7 @@ def get_stats():
     )
     row = cur.fetchone()
 
+    cur.close()
     conn.close()
 
     if not row:
