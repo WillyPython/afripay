@@ -6,8 +6,8 @@ import streamlit.components.v1 as components
 
 from core.session import logout_admin
 from services.admin_service import (
-    pbkdf2_verify_password,
-    get_admin_hash,
+    admin_is_configured,
+    verify_admin_password,
 )
 from services.order_service import list_orders_all, update_merchant_info
 from ui.branding import render_sidebar_branding
@@ -392,13 +392,11 @@ def admin_gate():
     password = st.text_input("Mot de passe admin", type="password")
 
     if st.button("Se connecter au Dashboard Admin"):
-        stored_hash = get_admin_hash()
-
-        if not stored_hash:
+        if not admin_is_configured():
             st.error("Admin non configuré.")
             return False
 
-        if pbkdf2_verify_password(password, stored_hash):
+        if verify_admin_password(password):
             st.session_state["admin_logged_in"] = True
             st.success("Admin connecté ✅")
             st.rerun()
