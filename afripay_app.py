@@ -134,12 +134,12 @@ def build_timeline_steps(order):
             "detail": f"Statut paiement : {safe_get(order, 'payment_status', '—')}",
         },
         {
-            "title": "Commande passée chez marchand",
+            "title": "Commande passée chez le marchand",
             "done": merchant_step >= 3,
             "detail": f"Statut marchand : {merchant_status or 'En attente'}",
         },
         {
-            "title": "Expédiée",
+            "title": "Commande expédiée",
             "done": merchant_step >= 4,
             "detail": f"Lien suivi : {safe_get(order, 'merchant_tracking_url', 'Non disponible')}",
         },
@@ -561,10 +561,19 @@ def page_creer_commande() -> None:
 
     st.info(
         "📌 AfriPay facilite le paiement international. "
-        "Le client reste responsable du dédouanement et de la livraison finale via son transitaire / agent."
+        "Le dédouanement et la livraison finale restent sous la responsabilité du client via son transitaire / agent."
     )
 
-    st.markdown("### Informations importantes à valider")
+    st.markdown("### Comment créer votre commande")
+    st.markdown(
+        """
+        1. Collez d'abord le **lien du produit**  
+        2. Indiquez le **nom du produit**  
+        3. Saisissez le **prix total affiché par le marchand**  
+        4. Renseignez l'**adresse du transitaire / agence**  
+        5. Choisissez votre **opérateur Mobile Money**
+        """
+    )
 
     st.warning(
         "Message juridique : AfriPay agit comme facilitateur de paiement international. "
@@ -574,52 +583,98 @@ def page_creer_commande() -> None:
     )
 
     st.info(
-        "Message opérationnel : pour éviter toute erreur, le client doit saisir le montant total affiché par le marchand "
-        "et renseigner l'adresse de son transitaire / agence, qui pourra aussi servir d'adresse de livraison sur le site marchand."
+        "Conseil pratique : utilisez de préférence le montant total affiché par le marchand "
+        "(produit + livraison éventuelle) afin d'éviter toute erreur de calcul."
     )
 
     with st.form("create_order_form"):
-        site_name = st.text_input("Site marchand", placeholder="Amazon, Temu, Zara...")
-        product_url = st.text_input("Lien produit")
-        product_title = st.text_input("Nom du produit / commande")
-        product_specs = st.text_area(
-            "Caractéristiques / variantes",
-            placeholder="Taille, couleur, quantité...",
+        st.markdown("### 🔗 Informations principales")
+
+        product_url = st.text_input(
+            "🔗 Lien du produit *",
+            placeholder="Collez ici le lien Temu, Amazon, AliExpress, Zara, etc.",
+            help="Exemple : lien complet du produit ou de la page marchand.",
         )
+
+        product_title = st.text_input(
+            "🛍 Nom du produit / de la commande *",
+            placeholder="Exemple : Chaussures femme pointure 39, Perruque brésilienne 18 pouces...",
+        )
+
+        site_name = st.text_input(
+            "🏪 Site marchand *",
+            placeholder="Exemple : Temu, Amazon, AliExpress, Zara...",
+        )
+
+        product_specs = st.text_area(
+            "📋 Caractéristiques / variantes",
+            placeholder="Exemple : taille, couleur, quantité, modèle...",
+        )
+
+        st.markdown("### 💶 Montant du marchand")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            product_price_eur = st.number_input("Montant produit (EUR)", min_value=0.0, value=0.0, step=1.0)
+            product_price_eur = st.number_input(
+                "Prix du produit (EUR)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+            )
 
         with col2:
-            shipping_estimate_eur = st.number_input("Transport / livraison (EUR)", min_value=0.0, value=0.0, step=1.0)
+            shipping_estimate_eur = st.number_input(
+                "Livraison / transport affiché par le marchand (EUR)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+            )
 
-        delivery_address = st.text_area("Adresse agence / transitaire (obligatoire)")
-        momo_provider = st.selectbox("Opérateur Mobile Money", ["", "MTN", "Orange"], index=0)
+        total_eur = product_price_eur + shipping_estimate_eur
+        st.caption(f"Total marchand estimé : {format_eur(total_eur)} EUR")
+
+        st.markdown("### 🚚 Livraison et paiement")
+
+        delivery_address = st.text_area(
+            "📦 Adresse du transitaire / agence *",
+            placeholder="Exemple : nom de l'agence, ville, quartier, contact utile...",
+            help="Cette adresse doit correspondre à l'adresse utilisée pour la réception de la commande.",
+        )
+
+        momo_provider = st.selectbox(
+            "📱 Opérateur Mobile Money",
+            ["", "MTN", "Orange"],
+            index=0,
+        )
 
         client_ack = st.checkbox(
             "Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus."
         )
 
-        total_eur = product_price_eur + shipping_estimate_eur
-        st.caption(f"Total estimé : {format_eur(total_eur)} EUR")
-
-        submitted = st.form_submit_button("Créer la commande")
+        submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
     if submitted:
-        if not site_name.strip():
-            st.error("Le site marchand est obligatoire.")
+        if not product_url.strip():
+            st.error("Le lien du produit est obligatoire.")
             return
+
         if not product_title.strip():
             st.error("Le nom du produit est obligatoire.")
             return
+
+        if not site_name.strip():
+            st.error("Le site marchand est obligatoire.")
+            return
+
         if total_eur <= 0:
-            st.error("Le montant total doit être supérieur à 0.")
+            st.error("Le montant total du marchand doit être supérieur à 0.")
             return
+
         if not delivery_address.strip():
-            st.error("Adresse agence / transitaire obligatoire.")
+            st.error("L'adresse du transitaire / agence est obligatoire.")
             return
+
         if not client_ack:
             st.error("Tu dois valider les informations juridiques et opérationnelles avant de créer la commande.")
             return
@@ -637,6 +692,10 @@ def page_creer_commande() -> None:
         )
 
         st.success(f"Commande créée ✅ Numéro : **{order_code}**")
+        st.info(
+            "Votre commande a bien été enregistrée. "
+            "Vous pourrez suivre son évolution dans « Mes commandes » et « Suivre commande »."
+        )
 
 
 def page_mes_commandes() -> None:
