@@ -1,80 +1,41 @@
-import base64
-import hashlib
-import hmac
 import os
-
-import streamlit as st
 
 from data.database import get_conn
 
 
 DEFAULT_EUR_XAF_RATE = "655.957"
-DEFAULT_ADMIN_PASSWORD = "Afripay2026!"
 
 
-def pbkdf2_hash_password(password, salt=None, iterations=120_000):
-    password = str(password or "")
-
-    if salt is None:
-        salt = os.urandom(16)
-
-    dk = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt,
-        int(iterations),
-    )
-
-    salt_b64 = base64.b64encode(salt).decode("utf-8")
-    hash_b64 = base64.b64encode(dk).decode("utf-8")
-
-    return f"pbkdf2_sha256${int(iterations)}${salt_b64}${hash_b64}"
+def get_admin_password():
+    """
+    Lit le mot de passe admin directement depuis l'environnement Render.
+    """
+    return (os.getenv("ADMIN_PASSWORD") or "").strip()
 
 
-def pbkdf2_verify_password(password, stored_hash):
-    try:
-        algorithm, iterations, salt_b64, hash_b64 = str(stored_hash).split("$", 3)
-        if algorithm != "pbkdf2_sha256":
-            return False
+def admin_is_configured():
+    """
+    Retourne True si ADMIN_PASSWORD est bien défini dans Render.
+    """
+    return get_admin_password() != ""
 
-        iterations = int(iterations)
-        salt = base64.b64decode(salt_b64.encode("utf-8"))
-        expected_hash = base64.b64decode(hash_b64.encode("utf-8"))
 
-        candidate_hash = hashlib.pbkdf2_hmac(
-            "sha256",
-            str(password or "").encode("utf-8"),
-            salt,
-            iterations,
-        )
+def verify_admin_password(password):
+    """
+    Vérifie le mot de passe admin saisi.
+    """
+    admin_password = get_admin_password()
 
-        return hmac.compare_digest(candidate_hash, expected_hash)
-    except Exception:
+    if admin_password == "":
         return False
 
+    if password is None:
+        return False
 
-def get_secret_admin_password():
-    """
-    Priorité :
-    1) variable d'environnement Render
-    2) Streamlit secrets
-    3) valeur par défaut
-    """
-    env_value = os.getenv("ADMIN_PASSWORD")
-    if env_value:
-        return str(env_value)
-
-    try:
-        secret_value = st.secrets.get("ADMIN_PASSWORD")
-        if secret_value:
-            return str(secret_value)
-    except Exception:
-        pass
-
-    return DEFAULT_ADMIN_PASSWORD
+    return str(password).strip() == admin_password
 
 
-def ensure_admin_settings_table():
+def ensure_settings_table():
     conn = get_conn()
     cur = conn.cursor()
 
@@ -93,7 +54,7 @@ def ensure_admin_settings_table():
 
 
 def get_setting(key, default=None):
-    ensure_admin_settings_table()
+    ensure_settings_table()
 
     conn = get_conn()
     cur = conn.cursor()
@@ -120,7 +81,7 @@ def get_setting(key, default=None):
 
 
 def set_setting(key, value):
-    ensure_admin_settings_table()
+    ensure_settings_table()
 
     conn = get_conn()
     cur = conn.cursor()
@@ -139,33 +100,16 @@ def set_setting(key, value):
     conn.close()
 
 
-def get_admin_hash():
-    return get_setting("admin_password_hash", None)
-
-
-def set_admin_password(new_password):
-    new_hash = pbkdf2_hash_password(str(new_password or ""))
-    set_setting("admin_password_hash", new_hash)
-    return new_hash
-
-
 def ensure_defaults():
     """
-    Initialise :
-    - taux EUR/XAF
-    - hash admin
-    - met à jour le hash si ADMIN_PASSWORD existe mais qu'aucun hash n'est stocké
+    Initialise uniquement les réglages généraux nécessaires.
+    L'admin est désormais géré directement par ADMIN_PASSWORD dans Render.
     """
-    ensure_admin_settings_table()
+    ensure_settings_table()
 
     current_rate = get_setting("eur_xaf_rate", None)
     if not current_rate:
         set_setting("eur_xaf_rate", DEFAULT_EUR_XAF_RATE)
-
-    current_admin_hash = get_admin_hash()
-    if not current_admin_hash:
-        admin_password = get_secret_admin_password()
-        set_setting("admin_password_hash", pbkdf2_hash_password(admin_password))
 
 
 def get_stats():
