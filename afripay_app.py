@@ -1,4 +1,5 @@
 import secrets
+import urllib.parse
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -203,6 +204,38 @@ def restore_session_from_query_params() -> None:
     )
 
     touch_session(token)
+
+
+def build_whatsapp_order_message(order_code, product_title, total_eur, product_url):
+    lines = [
+        "Bonjour,",
+        "",
+        "Votre commande AfriPay a bien été créée ✅",
+        "",
+        f"Référence : {order_code}",
+        f"Produit : {product_title}",
+        f"Montant estimé marchand : {format_eur(total_eur)} EUR",
+    ]
+
+    if product_url:
+        lines.append(f"Lien du produit : {product_url}")
+
+    lines.extend(
+        [
+            "",
+            "Vous pourrez suivre l'évolution de votre commande dans AfriPay.",
+            "",
+            "AfriPay Afrika",
+            "Facilitateur des paiements internationaux",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def build_whatsapp_share_url(message: str) -> str:
+    encoded_message = urllib.parse.quote(message)
+    return f"https://wa.me/?text={encoded_message}"
 
 
 def render_sidebar() -> str:
@@ -696,6 +729,22 @@ def page_creer_commande() -> None:
             "Votre commande a bien été enregistrée. "
             "Vous pourrez suivre son évolution dans « Mes commandes » et « Suivre commande »."
         )
+
+        whatsapp_message = build_whatsapp_order_message(
+            order_code=order_code,
+            product_title=product_title.strip(),
+            total_eur=total_eur,
+            product_url=product_url.strip(),
+        )
+        whatsapp_url = build_whatsapp_share_url(whatsapp_message)
+
+        st.markdown("### 📲 Partager votre commande")
+        st.link_button(
+            "Envoyer via WhatsApp",
+            whatsapp_url,
+            use_container_width=True,
+        )
+        st.code(whatsapp_message)
 
 
 def page_mes_commandes() -> None:
