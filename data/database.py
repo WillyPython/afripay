@@ -186,6 +186,20 @@ def init_db():
         add_column_if_missing(cur, "orders", "product_name", "TEXT")
         add_column_if_missing(cur, "orders", "product_specs", "TEXT")
 
+        # montant d'origine marchand / multi-devise
+        add_column_if_missing(
+            cur,
+            "orders",
+            "merchant_total_amount",
+            "DOUBLE PRECISION DEFAULT 0"
+        )
+        add_column_if_missing(
+            cur,
+            "orders",
+            "merchant_currency",
+            "TEXT DEFAULT 'EUR'"
+        )
+
         # ancien modèle encore toléré
         add_column_if_missing(
             cur,
@@ -228,7 +242,12 @@ def init_db():
         add_column_if_missing(cur, "orders", "merchant_tracking_url", "TEXT")
         add_column_if_missing(cur, "orders", "merchant_purchase_date", "TEXT")
         add_column_if_missing(cur, "orders", "merchant_notes", "TEXT")
-        add_column_if_missing(cur, "orders", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        add_column_if_missing(
+            cur,
+            "orders",
+            "updated_at",
+            "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        )
 
         # préparation règles AfriPay métier
         add_column_if_missing(cur, "orders", "freight_forwarder_name", "TEXT")
@@ -236,7 +255,7 @@ def init_db():
         add_column_if_missing(cur, "orders", "merchant_delivery_address", "TEXT")
 
         # -------------------------
-        # MISE A JOUR product_name si vide
+        # NORMALISATION DONNEES EXISTANTES
         # -------------------------
         cur.execute(
             """
@@ -245,6 +264,33 @@ def init_db():
             WHERE (product_name IS NULL OR TRIM(product_name) = '')
               AND product_title IS NOT NULL
               AND TRIM(product_title) <> ''
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET merchant_total_amount = total_to_pay_eur
+            WHERE (merchant_total_amount IS NULL OR merchant_total_amount = 0)
+              AND total_to_pay_eur IS NOT NULL
+              AND total_to_pay_eur > 0
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET merchant_currency = 'EUR'
+            WHERE merchant_currency IS NULL
+               OR TRIM(merchant_currency) = ''
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET updated_at = created_at
+            WHERE updated_at IS NULL
             """
         )
 
@@ -283,6 +329,7 @@ def init_db():
         add_index_if_missing(cur, "idx_orders_created_at", "orders", "(created_at)")
         add_index_if_missing(cur, "idx_orders_country_code", "orders", "(country_code)")
         add_index_if_missing(cur, "idx_orders_merchant_status", "orders", "(merchant_status)")
+        add_index_if_missing(cur, "idx_orders_merchant_currency", "orders", "(merchant_currency)")
 
         # -------------------------
         # USER SESSIONS
