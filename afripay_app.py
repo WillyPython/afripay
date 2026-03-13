@@ -624,9 +624,15 @@ def page_creer_commande() -> None:
         st.markdown("### 🔗 Informations principales")
 
         product_url = st.text_input(
-            "🔗 Lien du produit *",
+            "🔗 Lien du produit ou de la commande *",
             placeholder="Collez ici le lien Temu, Amazon, AliExpress, Zara, etc.",
-            help="Exemple : lien complet du produit ou de la page marchand.",
+            help="Lien du produit ou de la commande sur le site marchand.",
+        )
+
+        st.caption(
+            "💡 Astuce : Collez ici le lien du produit ou de la commande. "
+            "Si votre commande contient plusieurs articles, saisissez simplement "
+            "le montant total affiché par le marchand."
         )
 
         product_title = st.text_input(
@@ -689,7 +695,7 @@ def page_creer_commande() -> None:
 
     if submitted:
         if not product_url.strip():
-            st.error("Le lien du produit est obligatoire.")
+            st.error("Le lien du produit ou de la commande est obligatoire.")
             return
 
         if not product_title.strip():
