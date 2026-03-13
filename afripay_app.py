@@ -26,8 +26,8 @@ from services.order_service import (
     get_order_by_code,
 )
 from services.admin_service import (
-    pbkdf2_verify_password,
-    get_admin_hash,
+    admin_is_configured,
+    verify_admin_password,
 )
 from services.settings_service import ensure_defaults
 
@@ -708,20 +708,18 @@ def page_admin() -> None:
         password = st.text_input("Mot de passe admin", type="password")
 
         if st.button("Se connecter (Admin)"):
-            stored_hash = get_admin_hash()
-
-            if not stored_hash:
+            if not admin_is_configured():
                 st.error("Admin non configuré.")
                 return
 
-            if pbkdf2_verify_password(password, stored_hash):
+            if verify_admin_password(password):
                 st.session_state["admin_logged_in"] = True
                 st.success("Admin connecté ✅")
                 st.switch_page("pages/admin_dashboard.py")
             else:
                 st.error("Mot de passe incorrect.")
 
-        st.caption("Conseil : définis ADMIN_PASSWORD dans Streamlit Secrets.")
+        st.caption("Le mot de passe admin est chargé depuis ADMIN_PASSWORD sur Render.")
         return
 
     st.success("Bienvenue dans l'espace administration")
