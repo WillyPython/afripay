@@ -33,6 +33,9 @@ from services.admin_service import (
 from services.settings_service import ensure_defaults
 
 
+AFRIPAY_PUBLIC_URL = "https://afripay-kvty.onrender.com"
+
+
 def format_xaf(value):
     try:
         value = float(value or 0)
@@ -58,6 +61,22 @@ def safe_get(row, key, default=""):
         return value if value not in (None, "") else default
     except Exception:
         return default
+
+
+def get_product_label(row, default="—"):
+    """
+    Retourne le nom du produit de manière robuste,
+    que la colonne s'appelle product_title ou product_name.
+    """
+    value = safe_get(row, "product_title", "")
+    if value:
+        return value
+
+    value = safe_get(row, "product_name", "")
+    if value:
+        return value
+
+    return default
 
 
 def parse_date(value):
@@ -198,8 +217,8 @@ def restore_session_from_query_params() -> None:
 
     restore_user_session(
         user_id=row["user_id"],
-        phone=row.get("phone", ""),
-        name=row.get("name", ""),
+        phone=row["phone"] if "phone" in row.keys() else "",
+        name=row["name"] if "name" in row.keys() else "",
         session_token=row["session_token"],
     )
 
@@ -207,23 +226,37 @@ def restore_session_from_query_params() -> None:
 
 
 def build_whatsapp_order_message(order_code, product_title, total_eur, product_url):
+    clean_product_title = str(product_title or "").strip() or "Produit non précisé"
+    clean_product_url = str(product_url or "").strip()
+
     lines = [
-        "Bonjour,",
+        "Bonjour 👋",
         "",
         "Votre commande AfriPay a bien été créée ✅",
         "",
         f"Référence : {order_code}",
-        f"Produit : {product_title}",
-        f"Montant estimé marchand : {format_eur(total_eur)} EUR",
+        f"Produit : {clean_product_title}",
+        f"Montant marchand estimé : {format_eur(total_eur)} EUR",
     ]
 
-    if product_url:
-        lines.append(f"Lien du produit : {product_url}")
+    if clean_product_url:
+        lines.extend(
+            [
+                "",
+                "Lien du produit :",
+                clean_product_url,
+            ]
+        )
 
     lines.extend(
         [
             "",
-            "Vous pourrez suivre l'évolution de votre commande dans AfriPay.",
+            "Vous pouvez suivre votre commande directement dans AfriPay.",
+            "",
+            "🚀 AfriPay permet de payer vos commandes Amazon, Temu ou AliExpress depuis l’Afrique avec Mobile Money.",
+            "",
+            "💡 Essayez AfriPay pour vos prochaines commandes :",
+            AFRIPAY_PUBLIC_URL,
             "",
             "AfriPay Afrika",
             "Facilitateur des paiements internationaux",
@@ -480,7 +513,7 @@ def page_dashboard_client() -> None:
 
     with info1:
         st.write(f"**Référence :** {safe_get(latest, 'order_code', '—')}")
-        st.write(f"**Produit :** {safe_get(latest, 'product_name', '—')}")
+        st.write(f"**Produit :** {get_product_label(latest)}")
         st.write(f"**Marchand :** {safe_get(latest, 'site_name', '—')}")
         st.write(f"**Montant XAF :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
         st.write(f"**Montant EUR :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
@@ -536,7 +569,7 @@ def page_tracking() -> None:
             return
 
         st.success(f"Commande : **{safe_get(row, 'order_code', '')}**")
-        st.write("**Produit :**", safe_get(row, "product_title", "—"))
+        st.write("**Produit :**", get_product_label(row))
         st.write("**Marchand :**", safe_get(row, "site_name", "—"))
         st.write("**Montant XAF :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
         st.write("**Montant EUR :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
@@ -746,11 +779,13 @@ def page_creer_commande() -> None:
 
         st.markdown("### 📲 Partager votre commande")
         st.link_button(
-            "Envoyer via WhatsApp",
+            "Partager AfriPay sur WhatsApp",
             whatsapp_url,
             use_container_width=True,
         )
-        st.code(whatsapp_message)
+
+        with st.expander("Voir le message WhatsApp"):
+            st.code(whatsapp_message)
 
 
 def page_mes_commandes() -> None:
@@ -776,7 +811,7 @@ def page_mes_commandes() -> None:
 
         with st.expander(expander_title):
             st.write(f"**Créée le :** {safe_get(row, 'created_at', '—')}")
-            st.write(f"**Produit :** {safe_get(row, 'product_name', '—')}")
+            st.write(f"**Produit :** {get_product_label(row)}")
             st.write(f"**Marchand :** {safe_get(row, 'site_name', '—')}")
             st.write(f"**Montant XAF :** {format_xaf(total)} XAF")
             st.write(f"**Montant EUR :** {format_eur(total_eur)} €")
