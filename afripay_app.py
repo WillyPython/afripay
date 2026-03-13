@@ -34,6 +34,7 @@ from services.settings_service import ensure_defaults
 
 
 AFRIPAY_PUBLIC_URL = "https://afripay-kvty.onrender.com"
+EUR_TO_XAF_RATE = 655.957
 
 
 def format_xaf(value):
@@ -53,6 +54,15 @@ def format_eur(value):
         value = 0.0
 
     return f"{value:,.2f}".replace(",", " ").replace(".", ",")
+
+
+def eur_to_xaf(value_eur):
+    try:
+        value_eur = float(value_eur or 0)
+    except (TypeError, ValueError):
+        value_eur = 0.0
+
+    return value_eur * EUR_TO_XAF_RATE
 
 
 def safe_get(row, key, default=""):
@@ -228,6 +238,7 @@ def restore_session_from_query_params() -> None:
 def build_whatsapp_order_message(order_code, product_title, total_eur, product_url):
     clean_product_title = str(product_title or "").strip() or "Produit non précisé"
     clean_product_url = str(product_url or "").strip()
+    total_xaf = eur_to_xaf(total_eur)
 
     lines = [
         "Bonjour 👋",
@@ -236,7 +247,8 @@ def build_whatsapp_order_message(order_code, product_title, total_eur, product_u
         "",
         f"Référence : {order_code}",
         f"Produit : {clean_product_title}",
-        f"Montant marchand estimé : {format_eur(total_eur)} EUR",
+        "Montant marchand estimé :",
+        f"{format_xaf(total_xaf)} XAF ({format_eur(total_eur)} EUR)",
     ]
 
     if clean_product_url:
@@ -704,7 +716,12 @@ def page_creer_commande() -> None:
             )
 
         total_eur = product_price_eur + shipping_estimate_eur
-        st.caption(f"Total marchand estimé : {format_eur(total_eur)} EUR")
+        total_xaf_estimated = eur_to_xaf(total_eur)
+
+        st.caption(
+            f"Total marchand estimé : {format_xaf(total_xaf_estimated)} XAF "
+            f"({format_eur(total_eur)} EUR)"
+        )
 
         st.markdown("### 🚚 Livraison et paiement")
 
