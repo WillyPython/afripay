@@ -65,6 +65,36 @@ def safe_get(row, key, default=""):
         return default
 
 
+def get_product_label(row, default="—"):
+    value = safe_get(row, "product_title", "")
+    if value:
+        return value
+
+    value = safe_get(row, "product_name", "")
+    if value:
+        return value
+
+    return default
+
+
+def format_merchant_amount(order):
+    merchant_total_amount = float(safe_get(order, "merchant_total_amount", 0) or 0)
+    merchant_currency = str(safe_get(order, "merchant_currency", "EUR") or "EUR").strip().upper()
+    total_xaf = float(safe_get(order, "total_xaf", 0) or 0)
+    total_eur = float(safe_get(order, "total_to_pay_eur", 0) or 0)
+
+    if merchant_currency == "XAF":
+        return (
+            f"{format_xaf(merchant_total_amount)} XAF "
+            f"({format_eur(total_eur)} EUR)"
+        )
+
+    return (
+        f"{format_xaf(total_xaf)} XAF "
+        f"({format_eur(merchant_total_amount)} {merchant_currency})"
+    )
+
+
 def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
     client_phone = safe_get(order, "user_phone", "")
@@ -76,13 +106,14 @@ def build_notification_message(order):
     merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
     merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
+    merchant_notes = safe_get(order, "merchant_notes", "")
 
-    total_xaf = safe_get(order, "total_xaf", 0)
+    merchant_amount_text = format_merchant_amount(order)
 
     lines = [
         f"Bonjour {client_name},",
         "",
-        "Votre commande AfriPay a été mise à jour.",
+        "Votre commande AfriPay a été mise à jour ✅",
     ]
 
     if order_code:
@@ -90,6 +121,9 @@ def build_notification_message(order):
 
     if site_name:
         lines.append(f"Marchand : {site_name}")
+
+    if merchant_amount_text:
+        lines.append(f"Montant marchand : {merchant_amount_text}")
 
     if merchant_order_number:
         lines.append(f"Numéro de commande marchand : {merchant_order_number}")
@@ -100,17 +134,14 @@ def build_notification_message(order):
     if merchant_status:
         lines.append(f"Statut marchand : {merchant_status}")
 
-    if total_xaf:
-        lines.append(f"Montant traité : {format_xaf(total_xaf)} XAF")
-
     if merchant_confirmation_url:
         lines.append(f"Lien de confirmation : {merchant_confirmation_url}")
 
     if merchant_tracking_url:
         lines.append(f"Lien de suivi : {merchant_tracking_url}")
 
-    if client_phone:
-        lines.append(f"Contact client : {client_phone}")
+    if merchant_notes:
+        lines.append(f"Note AfriPay : {merchant_notes}")
 
     lines.append("")
     lines.append(
@@ -122,7 +153,7 @@ def build_notification_message(order):
 
     whatsapp_message = "\n".join(lines)
 
-    sms_parts = [f"AfriPay - Commande {order_code}" if order_code else "AfriPay"]
+    sms_parts = [f"AfriPay {order_code}" if order_code else "AfriPay"]
 
     if merchant_status:
         sms_parts.append(f"Statut: {merchant_status}")
@@ -132,9 +163,6 @@ def build_notification_message(order):
 
     if merchant_tracking_url:
         sms_parts.append(f"Suivi: {merchant_tracking_url}")
-
-    if client_phone:
-        sms_parts.append(f"Client: {client_phone}")
 
     sms_message = " | ".join(sms_parts)
 
@@ -218,6 +246,7 @@ def render_notification_block(order):
     merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
     merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
+    merchant_notes = safe_get(order, "merchant_notes", "")
 
     has_notification_content = any(
         [
@@ -226,6 +255,7 @@ def render_notification_block(order):
             merchant_tracking_url,
             merchant_purchase_date,
             merchant_status,
+            merchant_notes,
         ]
     )
 
@@ -276,12 +306,14 @@ def render_order_card(order):
     user_email = safe_get(order, "user_email", "—")
 
     site_name = safe_get(order, "site_name", "—")
-    product_title = safe_get(order, "product_title", "—")
+    product_title = get_product_label(order)
     product_url = safe_get(order, "product_url", "")
     delivery_address = safe_get(order, "delivery_address", "—")
 
     total_to_pay_eur = safe_get(order, "total_to_pay_eur", 0)
     total_xaf = safe_get(order, "total_xaf", 0)
+    merchant_currency = safe_get(order, "merchant_currency", "EUR")
+    merchant_total_amount = safe_get(order, "merchant_total_amount", 0)
 
     order_status = safe_get(order, "order_status", "")
     status_label = STATUS_LABELS.get(order_status, order_status or "—")
@@ -291,6 +323,7 @@ def render_order_card(order):
     merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
     merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
+    merchant_notes = safe_get(order, "merchant_notes", "")
 
     title = f"{order_code} — {user_name}"
 
@@ -306,10 +339,11 @@ def render_order_card(order):
         with c2:
             st.markdown(f"**Marchand :** {site_name}")
             st.markdown(f"**Produit :** {product_title}")
-            st.markdown(f"**Montant EUR :** {format_eur(total_to_pay_eur)} €")
             st.markdown(f"**Montant XAF :** {format_xaf(total_xaf)} XAF")
+            st.markdown(f"**Montant EUR :** {format_eur(total_to_pay_eur)} €")
 
         with c3:
+            st.markdown(f"**Montant d'origine marchand :** {merchant_total_amount} {merchant_currency}")
             st.markdown("**Adresse transitaire :**")
             st.write(delivery_address)
 
@@ -353,6 +387,12 @@ def render_order_card(order):
                     index=index,
                 )
 
+            merchant_notes_input = st.text_area(
+                "Notes marchand / AfriPay",
+                value=merchant_notes,
+                placeholder="Exemple : commande confirmée par email, colis annoncé pour la semaine prochaine...",
+            )
+
             submitted = st.form_submit_button(
                 "Enregistrer les informations marchand",
                 use_container_width=True,
@@ -366,12 +406,20 @@ def render_order_card(order):
                     merchant_tracking_url=merchant_tracking_url_input,
                     merchant_purchase_date=merchant_purchase_date_input,
                     merchant_status=merchant_status_input,
+                    merchant_notes=merchant_notes_input,
                 )
                 st.success("Informations marchand enregistrées avec succès.")
                 st.rerun()
 
         st.markdown("---")
-        render_notification_block(order)
+        render_notification_block({**order, 
+            "merchant_order_number": merchant_order_number_input if 'merchant_order_number_input' in locals() else merchant_order_number,
+            "merchant_confirmation_url": merchant_confirmation_url_input if 'merchant_confirmation_url_input' in locals() else merchant_confirmation_url,
+            "merchant_tracking_url": merchant_tracking_url_input if 'merchant_tracking_url_input' in locals() else merchant_tracking_url,
+            "merchant_purchase_date": merchant_purchase_date_input if 'merchant_purchase_date_input' in locals() else merchant_purchase_date,
+            "merchant_status": merchant_status_input if 'merchant_status_input' in locals() else merchant_status,
+            "merchant_notes": merchant_notes_input if 'merchant_notes_input' in locals() else merchant_notes,
+        })
 
 
 def admin_gate():
