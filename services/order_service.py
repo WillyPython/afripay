@@ -156,6 +156,46 @@ def create_order_for_user(
 
 
 # -------------------------------
+# Mise à jour infos marchand (admin)
+# -------------------------------
+def update_merchant_info(
+    order_id,
+    merchant_order_number="",
+    merchant_confirmation_url="",
+    merchant_tracking_url="",
+    merchant_purchase_date="",
+    merchant_status="",
+):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE orders
+        SET
+            merchant_order_number = %s,
+            merchant_confirmation_url = %s,
+            merchant_tracking_url = %s,
+            merchant_purchase_date = %s,
+            merchant_status = %s
+        WHERE id = %s
+        """,
+        (
+            str(merchant_order_number or "").strip(),
+            str(merchant_confirmation_url or "").strip(),
+            str(merchant_tracking_url or "").strip(),
+            str(merchant_purchase_date or "").strip(),
+            str(merchant_status or "").strip(),
+            int(order_id),
+        ),
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# -------------------------------
 # Liste commandes utilisateur
 # -------------------------------
 def list_orders_for_user(user_id):
@@ -214,9 +254,14 @@ def list_orders_all():
 
     cur.execute(
         """
-        SELECT *
-        FROM orders
-        ORDER BY created_at DESC
+        SELECT
+            o.*,
+            u.name AS user_name,
+            u.phone AS user_phone,
+            u.email AS user_email
+        FROM orders o
+        LEFT JOIN users u ON o.user_id = u.id
+        ORDER BY o.created_at DESC
         """
     )
 
