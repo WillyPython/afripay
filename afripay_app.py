@@ -61,8 +61,15 @@ def eur_to_xaf(value_eur):
         value_eur = float(value_eur or 0)
     except (TypeError, ValueError):
         value_eur = 0.0
-
     return value_eur * EUR_TO_XAF_RATE
+
+
+def xaf_to_eur(value_xaf):
+    try:
+        value_xaf = float(value_xaf or 0)
+    except (TypeError, ValueError):
+        value_xaf = 0.0
+    return value_xaf / EUR_TO_XAF_RATE if EUR_TO_XAF_RATE else 0.0
 
 
 def safe_get(row, key, default=""):
@@ -74,10 +81,6 @@ def safe_get(row, key, default=""):
 
 
 def get_product_label(row, default="—"):
-    """
-    Retourne le nom du produit de manière robuste,
-    que la colonne s'appelle product_title ou product_name.
-    """
     value = safe_get(row, "product_title", "")
     if value:
         return value
@@ -191,9 +194,6 @@ def render_logistics_timeline(order, title="Timeline logistique"):
 
 
 def save_session_token_in_query_params(token: str | None) -> None:
-    """
-    Sauvegarde ou supprime le token de session dans l'URL.
-    """
     if token:
         st.query_params["session_token"] = token
     else:
@@ -204,10 +204,6 @@ def save_session_token_in_query_params(token: str | None) -> None:
 
 
 def restore_session_from_query_params() -> None:
-    """
-    Restaure automatiquement la session utilisateur si un token valide
-    est présent dans l'URL.
-    """
     if st.session_state.get("logged_in"):
         token = st.session_state.get("session_token")
         if token:
@@ -235,10 +231,36 @@ def restore_session_from_query_params() -> None:
     touch_session(token)
 
 
-def build_whatsapp_order_message(order_code, product_title, total_eur, product_url):
+def compute_dual_amounts(merchant_total_amount, merchant_currency):
+    currency = str(merchant_currency or "").strip().upper()
+
+    try:
+        amount = float(merchant_total_amount or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+
+    if currency == "XAF":
+        total_xaf = amount
+        total_eur = xaf_to_eur(amount)
+    else:
+        total_eur = amount
+        total_xaf = eur_to_xaf(amount)
+
+    return total_xaf, total_eur
+
+
+def build_whatsapp_order_message(
+    order_code,
+    product_title,
+    merchant_total_amount,
+    merchant_currency,
+    product_url,
+):
     clean_product_title = str(product_title or "").strip() or "Produit non précisé"
     clean_product_url = str(product_url or "").strip()
-    total_xaf = eur_to_xaf(total_eur)
+    currency = str(merchant_currency or "").strip().upper() or "EUR"
+
+    total_xaf, total_eur = compute_dual_amounts(merchant_total_amount, currency)
 
     lines = [
         "Bonjour 👋",
@@ -249,6 +271,7 @@ def build_whatsapp_order_message(order_code, product_title, total_eur, product_u
         f"Produit : {clean_product_title}",
         "Montant marchand estimé :",
         f"{format_xaf(total_xaf)} XAF ({format_eur(total_eur)} EUR)",
+        f"Devise d'origine du marchand : {currency}",
     ]
 
     if clean_product_url:
@@ -647,9 +670,10 @@ def page_creer_commande() -> None:
         """
         1. Collez d'abord le **lien du produit**  
         2. Indiquez le **nom du produit**  
-        3. Saisissez le **prix total affiché par le marchand**  
-        4. Renseignez l'**adresse du transitaire / agence**  
-        5. Choisissez votre **opérateur Mobile Money**
+        3. Saisissez le **montant total affiché par le marchand**  
+        4. Choisissez la **devise du marchand**
+        5. Renseignez l'**adresse du transitaire / agence**  
+        6. Choisissez votre **opérateur Mobile Money**
         """
     )
 
@@ -661,8 +685,8 @@ def page_creer_commande() -> None:
     )
 
     st.info(
-        "Conseil pratique : utilisez de préférence le montant total affiché par le marchand "
-        "(produit + livraison éventuelle) afin d'éviter toute erreur de calcul."
+        "Conseil pratique : saisissez le montant total final affiché par le marchand. "
+        "Ce montant peut être en XAF ou en EUR selon le site ou le vendeur."
     )
 
     with st.form("create_order_form"):
@@ -676,8 +700,7 @@ def page_creer_commande() -> None:
 
         st.caption(
             "💡 Astuce : Collez ici le lien du produit ou de la commande. "
-            "Si votre commande contient plusieurs articles, saisissez simplement "
-            "le montant total affiché par le marchand."
+            "Si votre commande contient plusieurs articles, saisissez simplement le montant total affiché par le marchand."
         )
 
         product_title = st.text_input(
@@ -697,30 +720,28 @@ def page_creer_commande() -> None:
 
         st.markdown("### 💶 Montant du marchand")
 
-        col1, col2 = st.columns(2)
+        merchant_total_amount = st.number_input(
+            "Montant total affiché par le marchand *",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+        )
 
-        with col1:
-            product_price_eur = st.number_input(
-                "Prix du produit (EUR)",
-                min_value=0.0,
-                value=0.0,
-                step=1.0,
-            )
+        merchant_currency = st.selectbox(
+            "Devise du marchand *",
+            ["XAF", "EUR"],
+            index=0,
+            help="Choisissez la devise réellement affichée par le site marchand ou le vendeur social.",
+        )
 
-        with col2:
-            shipping_estimate_eur = st.number_input(
-                "Livraison / transport affiché par le marchand (EUR)",
-                min_value=0.0,
-                value=0.0,
-                step=1.0,
-            )
-
-        total_eur = product_price_eur + shipping_estimate_eur
-        total_xaf_estimated = eur_to_xaf(total_eur)
+        preview_total_xaf, preview_total_eur = compute_dual_amounts(
+            merchant_total_amount,
+            merchant_currency,
+        )
 
         st.caption(
-            f"Total marchand estimé : {format_xaf(total_xaf_estimated)} XAF "
-            f"({format_eur(total_eur)} EUR)"
+            f"Montant marchand estimé : {format_xaf(preview_total_xaf)} XAF "
+            f"({format_eur(preview_total_eur)} EUR)"
         )
 
         st.markdown("### 🚚 Livraison et paiement")
@@ -756,8 +777,8 @@ def page_creer_commande() -> None:
             st.error("Le site marchand est obligatoire.")
             return
 
-        if total_eur <= 0:
-            st.error("Le montant total du marchand doit être supérieur à 0.")
+        if merchant_total_amount <= 0:
+            st.error("Le montant total affiché par le marchand doit être supérieur à 0.")
             return
 
         if not delivery_address.strip():
@@ -767,6 +788,18 @@ def page_creer_commande() -> None:
         if not client_ack:
             st.error("Tu dois valider les informations juridiques et opérationnelles avant de créer la commande.")
             return
+
+        final_total_xaf, final_total_eur = compute_dual_amounts(
+            merchant_total_amount,
+            merchant_currency,
+        )
+
+        if merchant_currency == "EUR":
+            product_price_eur = float(merchant_total_amount)
+            shipping_estimate_eur = 0.0
+        else:
+            product_price_eur = float(final_total_eur)
+            shipping_estimate_eur = 0.0
 
         order_code = create_order_for_user(
             user_id=int(st.session_state["user_id"]),
@@ -786,10 +819,15 @@ def page_creer_commande() -> None:
             "Vous pourrez suivre son évolution dans « Mes commandes » et « Suivre commande »."
         )
 
+        st.success(
+            f"Montant retenu : {format_xaf(final_total_xaf)} XAF ({format_eur(final_total_eur)} EUR)"
+        )
+
         whatsapp_message = build_whatsapp_order_message(
             order_code=order_code,
             product_title=product_title.strip(),
-            total_eur=total_eur,
+            merchant_total_amount=merchant_total_amount,
+            merchant_currency=merchant_currency,
             product_url=product_url.strip(),
         )
         whatsapp_url = build_whatsapp_share_url(whatsapp_message)
