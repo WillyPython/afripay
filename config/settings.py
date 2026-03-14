@@ -5,16 +5,16 @@ def _clean_env(value: str | None) -> str:
     """
     Nettoie une variable d'environnement :
     - None -> ""
-    - supprime espaces début/fin
+    - supprime les espaces en début/fin
     """
     if value is None:
         return ""
     return value.strip()
 
 
+APP_TITLE = "AfriPay Afrika"
 APP_ENV = _clean_env(os.getenv("APP_ENV", "production"))
 DATABASE_URL = _clean_env(os.getenv("DATABASE_URL"))
-
 ADMIN_PASSWORD = _clean_env(os.getenv("ADMIN_PASSWORD"))
 
 DEFAULT_EUR_TO_XAF_RATE = 655.957
