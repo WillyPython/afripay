@@ -65,6 +65,12 @@ def safe_get(row, key, default=""):
         return default
 
 
+def clean_product_url(url):
+    if not url:
+        return ""
+    return str(url).split("?")[0].strip()
+
+
 def get_product_label(row, default="—"):
     value = safe_get(row, "product_title", "")
     if value:
@@ -122,6 +128,7 @@ def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
     order_code = safe_get(order, "order_code", "")
     site_name = safe_get(order, "site_name", "Marchand")
+    product_url = clean_product_url(safe_get(order, "product_url", ""))
 
     merchant_order_number = safe_get(order, "merchant_order_number", "")
     merchant_confirmation_url = safe_get(order, "merchant_confirmation_url", "")
@@ -156,6 +163,9 @@ def build_notification_message(order):
     if merchant_status:
         lines.append(f"Statut marchand : {merchant_status}")
 
+    if product_url:
+        lines.append(f"Lien produit : {product_url}")
+
     if merchant_confirmation_url:
         lines.append(f"Lien de confirmation : {merchant_confirmation_url}")
 
@@ -172,6 +182,11 @@ def build_notification_message(order):
     lines.append("Merci de suivre votre commande avec votre transitaire.")
     lines.append("")
     lines.append("Équipe AfriPay")
+    lines.append("")
+    lines.append("🌍 AfriPay Afrika")
+    lines.append("Facilitateur des paiements internationaux")
+    lines.append("Essayez AfriPay pour vos prochaines commandes :")
+    lines.append("https://afripay-kvty.onrender.com")
 
     whatsapp_message = "\n".join(lines)
 
@@ -329,7 +344,7 @@ def render_order_card(order):
 
     site_name = safe_get(order, "site_name", "—")
     product_title = get_product_label(order)
-    product_url = safe_get(order, "product_url", "")
+    product_url = clean_product_url(safe_get(order, "product_url", ""))
     delivery_address = safe_get(order, "delivery_address", "—")
 
     total_to_pay_eur = safe_get(order, "total_to_pay_eur", 0)
@@ -437,6 +452,7 @@ def render_order_card(order):
         render_notification_block(
             {
                 **order,
+                "product_url": product_url,
                 "merchant_order_number": merchant_order_number_input if "merchant_order_number_input" in locals() else merchant_order_number,
                 "merchant_confirmation_url": merchant_confirmation_url_input if "merchant_confirmation_url_input" in locals() else merchant_confirmation_url,
                 "merchant_tracking_url": merchant_tracking_url_input if "merchant_tracking_url_input" in locals() else merchant_tracking_url,
