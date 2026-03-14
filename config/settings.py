@@ -12,7 +12,10 @@ def _clean_env(value: str | None) -> str:
     return value.strip()
 
 
-APP_TITLE = "AfriPay Afrika"
+APP_NAME = "AfriPay Afrika"
+APP_TITLE = APP_NAME
+APP_TAGLINE = "Paiements internationaux simplifiés pour l'Afrique"
+
 APP_ENV = _clean_env(os.getenv("APP_ENV", "production"))
 DATABASE_URL = _clean_env(os.getenv("DATABASE_URL"))
 ADMIN_PASSWORD = _clean_env(os.getenv("ADMIN_PASSWORD"))
