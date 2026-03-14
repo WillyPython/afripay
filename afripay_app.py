@@ -344,10 +344,32 @@ def ensure_captcha(prefix: str) -> None:
         refresh_captcha(prefix)
 
 
-def validate_captcha(prefix: str, user_input: str) -> bool:
+def get_captcha_error(prefix: str) -> str:
+    return str(st.session_state.get(f"{prefix}_captcha_error", "")).strip()
+
+
+def set_captcha_error(prefix: str, message: str) -> None:
+    st.session_state[f"{prefix}_captcha_error"] = str(message or "").strip()
+
+
+def clear_captcha_error(prefix: str) -> None:
+    st.session_state[f"{prefix}_captcha_error"] = ""
+
+
+def get_captcha_status(prefix: str, user_input: str) -> str:
     expected = str(st.session_state.get(f"{prefix}_captcha_expected", "")).strip()
     provided = str(user_input or "").strip()
-    return bool(expected) and provided == expected
+
+    if not provided:
+        return "empty"
+
+    if not expected:
+        return "missing"
+
+    if provided != expected:
+        return "invalid"
+
+    return "ok"
 
 
 def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> str:
@@ -357,24 +379,33 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
     b = st.session_state.get(f"{prefix}_captcha_b", 0)
 
     st.markdown(f"### {title}")
+    st.warning("Captcha obligatoire : vous devez saisir le résultat exact pour continuer.")
     st.info(
         f"Protection anti-bot AfriPay : veuillez résoudre l'opération suivante avant de continuer : **{a} + {b} = ?**"
     )
+
+    existing_error = get_captcha_error(prefix)
+    if existing_error:
+        st.error(existing_error)
 
     col1, col2 = st.columns([3, 1])
 
     with col1:
         captcha_input = st.text_input(
-            "Résultat de l'opération",
+            "Résultat de l'opération *",
             key=f"{prefix}_captcha_input",
-            placeholder="Entrez le résultat",
+            placeholder="Captcha obligatoire : entrez le résultat exact",
+            help="Ce captcha est obligatoire. Sans le bon résultat, vous ne pourrez pas continuer.",
         )
 
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Nouveau calcul", key=f"{prefix}_captcha_refresh"):
             refresh_captcha(prefix)
+            clear_captcha_error(prefix)
             st.rerun()
+
+    st.caption("Sans le bon résultat du captcha, vous ne pourrez ni continuer ni valider cette action.")
 
     return captcha_input
 
@@ -424,11 +455,26 @@ def page_connexion() -> None:
             st.error("Entre ton numéro.")
             return
 
-        if not validate_captcha("login", captcha_input):
-            st.error("Captcha incorrect. Merci de résoudre correctement l'opération.")
+        captcha_status = get_captcha_status("login", captcha_input)
+
+        if captcha_status == "empty":
+            set_captcha_error(
+                "login",
+                "Captcha obligatoire : veuillez entrer le résultat de l'opération avant d'envoyer l'OTP.",
+            )
+            st.rerun()
+            return
+
+        if captcha_status in {"invalid", "missing"}:
+            set_captcha_error(
+                "login",
+                "Captcha incorrect : veuillez entrer le résultat exact de l'opération pour envoyer l'OTP.",
+            )
             refresh_captcha("login")
             st.rerun()
             return
+
+        clear_captcha_error("login")
 
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
@@ -476,8 +522,10 @@ def page_connexion() -> None:
 
         save_session_token_in_query_params(session_token)
 
-        st.success("Connexion réussie ✅")
+        clear_captcha_error("login")
         refresh_captcha("login")
+
+        st.success("Connexion réussie ✅")
         st.rerun()
 
 
@@ -814,11 +862,26 @@ def page_creer_commande() -> None:
         submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
     if submitted:
-        if not validate_captcha("order", captcha_input):
-            st.error("Captcha incorrect. Merci de résoudre correctement l'opération avant de créer la commande.")
+        captcha_status = get_captcha_status("order", captcha_input)
+
+        if captcha_status == "empty":
+            set_captcha_error(
+                "order",
+                "Captcha obligatoire : veuillez entrer le résultat de l'opération avant de créer la commande.",
+            )
+            st.rerun()
+            return
+
+        if captcha_status in {"invalid", "missing"}:
+            set_captcha_error(
+                "order",
+                "Captcha incorrect : veuillez entrer le résultat exact de l'opération avant de créer la commande.",
+            )
             refresh_captcha("order")
             st.rerun()
             return
+
+        clear_captcha_error("order")
 
         if not product_url.strip():
             st.error("Le lien du produit ou de la commande est obligatoire.")
@@ -897,6 +960,7 @@ def page_creer_commande() -> None:
         with st.expander("Voir le message WhatsApp"):
             st.code(whatsapp_message)
 
+        clear_captcha_error("order")
         refresh_captcha("order")
 
 
