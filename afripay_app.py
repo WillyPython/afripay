@@ -31,9 +31,10 @@ from services.admin_service import (
     verify_admin_password,
 )
 from services.settings_service import ensure_defaults
+from ui.branding import render_sidebar_branding
 
 
-AFRIPAY_PUBLIC_URL = "https://afripay-kvty.onrender.com"
+AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 
 
@@ -155,7 +156,7 @@ def build_timeline_steps(order):
 
     merchant_step = merchant_status_to_step(merchant_status)
 
-    return [
+    steps = [
         {
             "title": "Commande créée",
             "done": order_status in {"CREEE", "PAYEE", "EN_COURS", "LIVREE"},
@@ -183,12 +184,32 @@ def build_timeline_steps(order):
         },
     ]
 
+    current_index = None
+    for i, step in enumerate(steps):
+        if step["done"]:
+            current_index = i
+
+    if current_index is None:
+        current_index = 0
+
+    return steps, current_index
+
 
 def render_logistics_timeline(order, title="Timeline logistique"):
     st.markdown(f"### {title}")
 
-    for index, step in enumerate(build_timeline_steps(order), start=1):
-        icon = "🟢" if step["done"] else "⚪"
+    steps, current_index = build_timeline_steps(order)
+
+    for index, step in enumerate(steps, start=1):
+        step_position = index - 1
+
+        if step_position < current_index:
+            icon = "🟢"
+        elif step_position == current_index:
+            icon = "🟡"
+        else:
+            icon = "⚪"
+
         st.markdown(f"**{icon} Étape {index} — {step['title']}**")
         st.caption(step["detail"])
 
@@ -307,41 +328,7 @@ def build_whatsapp_share_url(message: str) -> str:
 
 
 def render_sidebar() -> str:
-    st.sidebar.image("assets/logo.png", width=190)
-    st.sidebar.markdown("---")
-
-    st.sidebar.markdown(
-        """
-        <h3 style="
-            text-align:center;
-            margin-bottom:6px;
-            color:white;
-            font-weight:700;
-        ">
-            AfriPay Afrika
-        </h3>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.sidebar.markdown(
-        """
-        <p style="
-            text-align:center;
-            font-size:13px;
-            font-weight:700;
-            margin-top:0;
-            margin-bottom:0;
-            color:#ff9900;
-            text-shadow:0 0 10px rgba(255,153,0,0.9);
-        ">
-            ✨ Facilitateur des paiements internationaux
-        </p>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.sidebar.markdown("---")
+    render_sidebar_branding()
 
     if st.session_state.get("logged_in"):
         st.sidebar.success("Connecté ✅")
@@ -671,7 +658,7 @@ def page_creer_commande() -> None:
         1. Collez d'abord le **lien du produit**  
         2. Indiquez le **nom du produit**  
         3. Saisissez le **montant total affiché par le marchand**  
-        4. Choisissez la **devise du marchand**
+        4. Choisissez la **devise du marchand**  
         5. Renseignez l'**adresse du transitaire / agence**  
         6. Choisissez votre **opérateur Mobile Money**
         """
