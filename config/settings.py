@@ -1,39 +1,28 @@
-from datetime import datetime, timezone
+import os
 
 
-APP_NAME = "AfriPay Afrika"
-APP_TITLE = "AfriPay Afrika - Facilitateur des paiements internationaux"
-APP_TAGLINE = "Facilitateur des paiements internationaux"
-
-DEFAULT_CURRENCY_XAF = "XAF"
-DEFAULT_CURRENCY_EUR = "EUR"
-
-DEFAULT_EUR_XAF_RATE = 655.957
-
-ORDER_STATUS_DEFAULT = "CREEE"
-PAYMENT_STATUS_DEFAULT = "EN_ATTENTE"
-
-
-def now_utc():
+def _clean_env(value: str | None) -> str:
     """
-    Retourne la date/heure UTC actuelle.
+    Nettoie une variable d'environnement :
+    - None -> ""
+    - supprime espaces début/fin
     """
-    return datetime.now(timezone.utc)
+    if value is None:
+        return ""
+    return value.strip()
 
 
-def now_iso():
-    """
-    Retourne une date/heure ISO propre en UTC.
-    Exemple :
-    2026-03-08T12:30:45+00:00
-    """
-    return now_utc().isoformat()
+APP_ENV = _clean_env(os.getenv("APP_ENV", "production"))
+DATABASE_URL = _clean_env(os.getenv("DATABASE_URL"))
+
+ADMIN_PASSWORD = _clean_env(os.getenv("ADMIN_PASSWORD"))
+
+DEFAULT_EUR_TO_XAF_RATE = 655.957
+SESSION_DURATION_DAYS = 30
 
 
-def today_iso():
+def is_admin_configured() -> bool:
     """
-    Retourne la date du jour au format ISO.
-    Exemple :
-    2026-03-08
+    Retourne True si le mot de passe admin est bien défini.
     """
-    return now_utc().date().isoformat()
+    return ADMIN_PASSWORD != ""
