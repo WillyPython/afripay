@@ -327,6 +327,58 @@ def build_whatsapp_share_url(message: str) -> str:
     return f"https://wa.me/?text={encoded_message}"
 
 
+# ===============================
+# CAPTCHA HUMAIN INTERNE
+# ===============================
+def refresh_captcha(prefix: str) -> None:
+    a = secrets.randbelow(8) + 2
+    b = secrets.randbelow(8) + 1
+    st.session_state[f"{prefix}_captcha_a"] = a
+    st.session_state[f"{prefix}_captcha_b"] = b
+    st.session_state[f"{prefix}_captcha_expected"] = str(a + b)
+
+
+def ensure_captcha(prefix: str) -> None:
+    expected_key = f"{prefix}_captcha_expected"
+    if expected_key not in st.session_state:
+        refresh_captcha(prefix)
+
+
+def validate_captcha(prefix: str, user_input: str) -> bool:
+    expected = str(st.session_state.get(f"{prefix}_captcha_expected", "")).strip()
+    provided = str(user_input or "").strip()
+    return bool(expected) and provided == expected
+
+
+def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> str:
+    ensure_captcha(prefix)
+
+    a = st.session_state.get(f"{prefix}_captcha_a", 0)
+    b = st.session_state.get(f"{prefix}_captcha_b", 0)
+
+    st.markdown(f"### {title}")
+    st.info(
+        f"Protection anti-bot AfriPay : veuillez résoudre l'opération suivante avant de continuer : **{a} + {b} = ?**"
+    )
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        captcha_input = st.text_input(
+            "Résultat de l'opération",
+            key=f"{prefix}_captcha_input",
+            placeholder="Entrez le résultat",
+        )
+
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Nouveau calcul", key=f"{prefix}_captcha_refresh"):
+            refresh_captcha(prefix)
+            st.rerun()
+
+    return captcha_input
+
+
 def render_sidebar() -> str:
     render_sidebar_branding()
 
@@ -365,10 +417,17 @@ def page_connexion() -> None:
     st.title("Connexion")
 
     phone = st.text_input("Téléphone", placeholder="+2376...")
+    captcha_input = render_captcha_block("login", title="Captcha sécurité connexion")
 
     if st.button("Envoyer OTP"):
         if not phone.strip():
             st.error("Entre ton numéro.")
+            return
+
+        if not validate_captcha("login", captcha_input):
+            st.error("Captcha incorrect. Merci de résoudre correctement l'opération.")
+            refresh_captcha("login")
+            st.rerun()
             return
 
         otp = f"{secrets.randbelow(900000) + 100000}"
@@ -418,6 +477,7 @@ def page_connexion() -> None:
         save_session_token_in_query_params(session_token)
 
         st.success("Connexion réussie ✅")
+        refresh_captcha("login")
         st.rerun()
 
 
@@ -676,6 +736,8 @@ def page_creer_commande() -> None:
         "Ce montant peut être en XAF ou en EUR selon le site ou le vendeur."
     )
 
+    captcha_input = render_captcha_block("order", title="Captcha sécurité création commande")
+
     with st.form("create_order_form"):
         st.markdown("### 🔗 Informations principales")
 
@@ -752,6 +814,12 @@ def page_creer_commande() -> None:
         submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
     if submitted:
+        if not validate_captcha("order", captcha_input):
+            st.error("Captcha incorrect. Merci de résoudre correctement l'opération avant de créer la commande.")
+            refresh_captcha("order")
+            st.rerun()
+            return
+
         if not product_url.strip():
             st.error("Le lien du produit ou de la commande est obligatoire.")
             return
@@ -828,6 +896,8 @@ def page_creer_commande() -> None:
 
         with st.expander("Voir le message WhatsApp"):
             st.code(whatsapp_message)
+
+        refresh_captcha("order")
 
 
 def page_mes_commandes() -> None:
