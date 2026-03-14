@@ -128,10 +128,13 @@ def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
     order_code = safe_get(order, "order_code", "")
     site_name = safe_get(order, "site_name", "Marchand")
+
     product_url = clean_product_url(safe_get(order, "product_url", ""))
+    merchant_confirmation_url = clean_product_url(
+        safe_get(order, "merchant_confirmation_url", "")
+    )
 
     merchant_order_number = safe_get(order, "merchant_order_number", "")
-    merchant_confirmation_url = safe_get(order, "merchant_confirmation_url", "")
     merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
     merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
@@ -166,7 +169,7 @@ def build_notification_message(order):
     if product_url:
         lines.append(f"Lien produit : {product_url}")
 
-    if merchant_confirmation_url:
+    if merchant_confirmation_url and merchant_confirmation_url != product_url:
         lines.append(f"Lien de confirmation : {merchant_confirmation_url}")
 
     if merchant_tracking_url:
