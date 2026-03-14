@@ -9,21 +9,22 @@ from services.admin_service import (
     admin_is_configured,
     verify_admin_password,
 )
-from services.order_service import list_orders_all, update_merchant_info
+from services.order_service import (
+    ORDER_STATUS_OPTIONS,
+    ORDER_STATUS_LABELS,
+    list_orders_all,
+    update_merchant_info,
+    update_order_status,
+)
 from ui.branding import render_sidebar_branding
+
+
+OFFICIAL_PUBLIC_URL = "https://afripayafrika.com"
 
 
 st.set_page_config(page_title="Dashboard Admin - AfriPay", layout="wide")
 render_sidebar_branding()
 
-
-STATUS_LABELS = {
-    "CREEE": "Créée",
-    "PAYEE": "Payée",
-    "EN_COURS": "En cours",
-    "LIVREE": "Livrée",
-    "ANNULEE": "Annulée",
-}
 
 MERCHANT_STATUS_OPTIONS = [
     "",
@@ -36,6 +37,15 @@ MERCHANT_STATUS_OPTIONS = [
     "Livrée au transitaire",
     "Annulée",
 ]
+
+
+STATUS_STYLES = {
+    "CREEE": {"label": "Créée", "color": "#94a3b8", "dot": "⚪"},
+    "PAYEE": {"label": "Payée", "color": "#22c55e", "dot": "🟢"},
+    "EN_COURS": {"label": "En cours", "color": "#facc15", "dot": "🟡"},
+    "LIVREE": {"label": "Livrée", "color": "#3b82f6", "dot": "🔵"},
+    "ANNULEE": {"label": "Annulée", "color": "#ef4444", "dot": "🔴"},
+}
 
 
 def format_xaf(value):
@@ -124,6 +134,36 @@ def format_merchant_amount(order):
     )
 
 
+def get_status_meta(order_status):
+    status = str(order_status or "").strip().upper()
+    return STATUS_STYLES.get(
+        status,
+        {"label": status or "—", "color": "#94a3b8", "dot": "⚪"},
+    )
+
+
+def render_status_badge(order_status):
+    meta = get_status_meta(order_status)
+    st.markdown(
+        f"""
+        <div style="
+            display:inline-block;
+            padding:8px 12px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.04);
+            border:1px solid rgba(255,255,255,0.10);
+            font-weight:700;
+            color:{meta['color']};
+            margin-top:4px;
+            margin-bottom:8px;
+        ">
+            {meta['dot']} {html.escape(meta['label'])}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
     order_code = safe_get(order, "order_code", "")
@@ -189,7 +229,7 @@ def build_notification_message(order):
     lines.append("🌍 AfriPay Afrika")
     lines.append("Facilitateur des paiements internationaux")
     lines.append("Essayez AfriPay pour vos prochaines commandes :")
-    lines.append("https://afripay-kvty.onrender.com")
+    lines.append(OFFICIAL_PUBLIC_URL)
 
     whatsapp_message = "\n".join(lines)
 
@@ -353,8 +393,8 @@ def render_order_card(order):
     total_to_pay_eur = safe_get(order, "total_to_pay_eur", 0)
     total_xaf = safe_get(order, "total_xaf", 0)
 
-    order_status = safe_get(order, "order_status", "")
-    status_label = STATUS_LABELS.get(order_status, order_status or "—")
+    order_status = str(safe_get(order, "order_status", "")).strip().upper()
+    status_label = ORDER_STATUS_LABELS.get(order_status, order_status or "—")
 
     merchant_order_number = safe_get(order, "merchant_order_number", "")
     merchant_confirmation_url = safe_get(order, "merchant_confirmation_url", "")
@@ -372,7 +412,9 @@ def render_order_card(order):
             st.markdown(f"**Client :** {user_name}")
             st.markdown(f"**Téléphone :** {user_phone}")
             st.markdown(f"**Email :** {user_email}")
-            st.markdown(f"**Statut AfriPay :** {status_label}")
+            st.markdown("**Statut AfriPay :**")
+            render_status_badge(order_status)
+            st.caption(status_label)
 
         with c2:
             st.markdown(f"**Marchand :** {site_name}")
@@ -391,40 +433,52 @@ def render_order_card(order):
                 st.markdown(f"**Lien produit :** {product_url}")
 
         st.markdown("---")
-        st.markdown("## Informations marchand")
+        st.markdown("## Gestion commande et marchand")
 
         with st.form(f"merchant_form_{order_id}"):
-            f1, f2 = st.columns(2)
+            top_left, top_right = st.columns(2)
 
-            with f1:
+            with top_left:
+                current_order_status_index = 0
+                if order_status in ORDER_STATUS_OPTIONS:
+                    current_order_status_index = ORDER_STATUS_OPTIONS.index(order_status)
+
+                order_status_input = st.selectbox(
+                    "Statut AfriPay",
+                    ORDER_STATUS_OPTIONS,
+                    index=current_order_status_index,
+                )
+
                 merchant_order_number_input = st.text_input(
                     "Numéro commande marchand",
                     value=merchant_order_number,
                 )
+
                 merchant_confirmation_url_input = st.text_input(
                     "Lien confirmation",
                     value=merchant_confirmation_url,
                 )
+
                 merchant_tracking_url_input = st.text_input(
                     "Lien suivi",
                     value=merchant_tracking_url,
                 )
 
-            with f2:
+            with top_right:
                 merchant_purchase_date_input = st.text_input(
                     "Date d'achat",
                     value=merchant_purchase_date,
                     placeholder="YYYY-MM-DD",
                 )
 
-                index = 0
+                merchant_status_index = 0
                 if merchant_status in MERCHANT_STATUS_OPTIONS:
-                    index = MERCHANT_STATUS_OPTIONS.index(merchant_status)
+                    merchant_status_index = MERCHANT_STATUS_OPTIONS.index(merchant_status)
 
                 merchant_status_input = st.selectbox(
                     "Statut marchand",
                     MERCHANT_STATUS_OPTIONS,
-                    index=index,
+                    index=merchant_status_index,
                 )
 
             merchant_notes_input = st.text_area(
@@ -434,11 +488,16 @@ def render_order_card(order):
             )
 
             submitted = st.form_submit_button(
-                "Enregistrer les informations marchand",
+                "Enregistrer les informations",
                 use_container_width=True,
             )
 
             if submitted:
+                update_order_status(
+                    order_id=order_id,
+                    order_status=order_status_input,
+                )
+
                 update_merchant_info(
                     order_id=order_id,
                     merchant_order_number=merchant_order_number_input,
@@ -448,13 +507,15 @@ def render_order_card(order):
                     merchant_status=merchant_status_input,
                     merchant_notes=merchant_notes_input,
                 )
-                st.success("Informations marchand enregistrées avec succès.")
+
+                st.success("Informations commande et marchand enregistrées avec succès.")
                 st.rerun()
 
         st.markdown("---")
         render_notification_block(
             {
                 **order,
+                "order_status": order_status_input if "order_status_input" in locals() else order_status,
                 "product_url": product_url,
                 "merchant_order_number": merchant_order_number_input if "merchant_order_number_input" in locals() else merchant_order_number,
                 "merchant_confirmation_url": merchant_confirmation_url_input if "merchant_confirmation_url_input" in locals() else merchant_confirmation_url,
