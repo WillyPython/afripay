@@ -77,9 +77,26 @@ def get_product_label(row, default="—"):
     return default
 
 
+def format_original_merchant_amount(order):
+    merchant_total_amount = float(safe_get(order, "merchant_total_amount", 0) or 0)
+    merchant_currency = str(
+        safe_get(order, "merchant_currency", "EUR") or "EUR"
+    ).strip().upper()
+
+    if merchant_currency == "XAF":
+        return f"{format_xaf(merchant_total_amount)} XAF"
+
+    if merchant_currency == "EUR":
+        return f"{format_eur(merchant_total_amount)} €"
+
+    return f"{format_eur(merchant_total_amount)} {merchant_currency}"
+
+
 def format_merchant_amount(order):
     merchant_total_amount = float(safe_get(order, "merchant_total_amount", 0) or 0)
-    merchant_currency = str(safe_get(order, "merchant_currency", "EUR") or "EUR").strip().upper()
+    merchant_currency = str(
+        safe_get(order, "merchant_currency", "EUR") or "EUR"
+    ).strip().upper()
     total_xaf = float(safe_get(order, "total_xaf", 0) or 0)
     total_eur = float(safe_get(order, "total_to_pay_eur", 0) or 0)
 
@@ -87,6 +104,12 @@ def format_merchant_amount(order):
         return (
             f"{format_xaf(merchant_total_amount)} XAF "
             f"({format_eur(total_eur)} EUR)"
+        )
+
+    if merchant_currency == "EUR":
+        return (
+            f"{format_xaf(total_xaf)} XAF "
+            f"({format_eur(merchant_total_amount)} EUR)"
         )
 
     return (
@@ -97,7 +120,6 @@ def format_merchant_amount(order):
 
 def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
-    client_phone = safe_get(order, "user_phone", "")
     order_code = safe_get(order, "order_code", "")
     site_name = safe_get(order, "site_name", "Marchand")
 
@@ -312,8 +334,6 @@ def render_order_card(order):
 
     total_to_pay_eur = safe_get(order, "total_to_pay_eur", 0)
     total_xaf = safe_get(order, "total_xaf", 0)
-    merchant_currency = safe_get(order, "merchant_currency", "EUR")
-    merchant_total_amount = safe_get(order, "merchant_total_amount", 0)
 
     order_status = safe_get(order, "order_status", "")
     status_label = STATUS_LABELS.get(order_status, order_status or "—")
@@ -343,7 +363,9 @@ def render_order_card(order):
             st.markdown(f"**Montant EUR :** {format_eur(total_to_pay_eur)} €")
 
         with c3:
-            st.markdown(f"**Montant d'origine marchand :** {merchant_total_amount} {merchant_currency}")
+            st.markdown(
+                f"**Montant d'origine marchand :** {format_original_merchant_amount(order)}"
+            )
             st.markdown("**Adresse transitaire :**")
             st.write(delivery_address)
 
@@ -412,14 +434,17 @@ def render_order_card(order):
                 st.rerun()
 
         st.markdown("---")
-        render_notification_block({**order, 
-            "merchant_order_number": merchant_order_number_input if 'merchant_order_number_input' in locals() else merchant_order_number,
-            "merchant_confirmation_url": merchant_confirmation_url_input if 'merchant_confirmation_url_input' in locals() else merchant_confirmation_url,
-            "merchant_tracking_url": merchant_tracking_url_input if 'merchant_tracking_url_input' in locals() else merchant_tracking_url,
-            "merchant_purchase_date": merchant_purchase_date_input if 'merchant_purchase_date_input' in locals() else merchant_purchase_date,
-            "merchant_status": merchant_status_input if 'merchant_status_input' in locals() else merchant_status,
-            "merchant_notes": merchant_notes_input if 'merchant_notes_input' in locals() else merchant_notes,
-        })
+        render_notification_block(
+            {
+                **order,
+                "merchant_order_number": merchant_order_number_input if "merchant_order_number_input" in locals() else merchant_order_number,
+                "merchant_confirmation_url": merchant_confirmation_url_input if "merchant_confirmation_url_input" in locals() else merchant_confirmation_url,
+                "merchant_tracking_url": merchant_tracking_url_input if "merchant_tracking_url_input" in locals() else merchant_tracking_url,
+                "merchant_purchase_date": merchant_purchase_date_input if "merchant_purchase_date_input" in locals() else merchant_purchase_date,
+                "merchant_status": merchant_status_input if "merchant_status_input" in locals() else merchant_status,
+                "merchant_notes": merchant_notes_input if "merchant_notes_input" in locals() else merchant_notes,
+            }
+        )
 
 
 def admin_gate():
