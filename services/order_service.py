@@ -9,23 +9,106 @@ DEFAULT_SELLER_FEE_XAF = 0
 DEFAULT_AFRIPAY_FEE_XAF = 0
 
 
-# -------------------------------
-# Générer un code de commande
-# -------------------------------
+# ===============================
+# STATUTS OFFICIELS AFRIPAY
+# ===============================
+ORDER_STATUS_CREATED = "CREEE"
+ORDER_STATUS_PAID = "PAYEE"
+ORDER_STATUS_IN_PROGRESS = "EN_COURS"
+ORDER_STATUS_DELIVERED = "LIVREE"
+ORDER_STATUS_CANCELLED = "ANNULEE"
+
+ORDER_STATUS_OPTIONS = [
+    ORDER_STATUS_CREATED,
+    ORDER_STATUS_PAID,
+    ORDER_STATUS_IN_PROGRESS,
+    ORDER_STATUS_DELIVERED,
+    ORDER_STATUS_CANCELLED,
+]
+
+ORDER_STATUS_LABELS = {
+    ORDER_STATUS_CREATED: "Créée",
+    ORDER_STATUS_PAID: "Payée",
+    ORDER_STATUS_IN_PROGRESS: "En cours",
+    ORDER_STATUS_DELIVERED: "Livrée",
+    ORDER_STATUS_CANCELLED: "Annulée",
+}
+
+
+PAYMENT_STATUS_PENDING = "EN_ATTENTE"
+PAYMENT_STATUS_PAID = "PAYE"
+PAYMENT_STATUS_FAILED = "ECHEC"
+
+PAYMENT_STATUS_OPTIONS = [
+    PAYMENT_STATUS_PENDING,
+    PAYMENT_STATUS_PAID,
+    PAYMENT_STATUS_FAILED,
+]
+
+PAYMENT_STATUS_LABELS = {
+    PAYMENT_STATUS_PENDING: "En attente",
+    PAYMENT_STATUS_PAID: "Payé",
+    PAYMENT_STATUS_FAILED: "Échec",
+}
+
+
+MERCHANT_STATUS_ORDER_PLACED = "Commande passée"
+MERCHANT_STATUS_PAYMENT_DONE = "Paiement effectué"
+MERCHANT_STATUS_CONFIRMED = "Confirmée par le marchand"
+MERCHANT_STATUS_PREPARING = "En préparation"
+MERCHANT_STATUS_SHIPPED = "Expédiée"
+MERCHANT_STATUS_IN_TRANSIT = "En transit"
+MERCHANT_STATUS_DELIVERED_FORWARDER = "Livrée au transitaire"
+MERCHANT_STATUS_CANCELLED = "Annulée"
+
+MERCHANT_STATUS_OPTIONS = [
+    "",
+    MERCHANT_STATUS_ORDER_PLACED,
+    MERCHANT_STATUS_PAYMENT_DONE,
+    MERCHANT_STATUS_CONFIRMED,
+    MERCHANT_STATUS_PREPARING,
+    MERCHANT_STATUS_SHIPPED,
+    MERCHANT_STATUS_IN_TRANSIT,
+    MERCHANT_STATUS_DELIVERED_FORWARDER,
+    MERCHANT_STATUS_CANCELLED,
+]
+
+
+# ===============================
+# SATISFACTION CLIENT (préparation)
+# ===============================
+MIN_CUSTOMER_RATING = 1
+MAX_CUSTOMER_RATING = 5
+
+
+# ===============================
+# GÉNÉRER UN CODE DE COMMANDE
+# ===============================
 def generate_order_code():
     year = datetime.utcnow().year
     rand = secrets.randbelow(900) + 100
     return f"CMD-{year}-{rand}"
 
 
-# -------------------------------
-# Helpers calcul
-# -------------------------------
+# ===============================
+# HELPERS
+# ===============================
 def _to_float(value, default=0.0):
     try:
         return float(value or default)
     except (TypeError, ValueError):
         return float(default)
+
+
+def _clean_text(value, default=""):
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _clean_optional_text(value):
+    cleaned = _clean_text(value, "")
+    return cleaned if cleaned else None
 
 
 def _round_xaf(value):
@@ -40,6 +123,75 @@ def _round_xaf(value):
     return integer if value == integer else integer + 1
 
 
+def normalize_order_status(value, default=ORDER_STATUS_CREATED):
+    cleaned = _clean_text(value, default).upper()
+    return cleaned if cleaned in ORDER_STATUS_OPTIONS else default
+
+
+def normalize_payment_status(value, default=PAYMENT_STATUS_PENDING):
+    cleaned = _clean_text(value, default).upper()
+    return cleaned if cleaned in PAYMENT_STATUS_OPTIONS else default
+
+
+def normalize_merchant_status(value, default=""):
+    cleaned = _clean_text(value, default)
+    return cleaned if cleaned in MERCHANT_STATUS_OPTIONS else default
+
+
+def get_order_status_label(status):
+    normalized = normalize_order_status(status)
+    return ORDER_STATUS_LABELS.get(normalized, normalized)
+
+
+def get_payment_status_label(status):
+    normalized = normalize_payment_status(status)
+    return PAYMENT_STATUS_LABELS.get(normalized, normalized)
+
+
+def is_valid_customer_rating(value):
+    try:
+        rating = int(value)
+    except (TypeError, ValueError):
+        return False
+    return MIN_CUSTOMER_RATING <= rating <= MAX_CUSTOMER_RATING
+
+
+def can_request_customer_rating(order):
+    """
+    Prépare la future logique de satisfaction client.
+    Une note ne doit être demandée qu'après livraison.
+    """
+    if not order:
+        return False
+    return normalize_order_status(order.get("order_status")) == ORDER_STATUS_DELIVERED
+
+
+def build_promoter_whatsapp_message(order):
+    """
+    Prépare le futur message WhatsApp promoteur post-livraison.
+    Ne modifie pas la base ; génère simplement le texte.
+    """
+    if not order:
+        return ""
+
+    customer_name = _clean_text(order.get("user_name"), "Cher client")
+    order_code = _clean_text(order.get("order_code"), "-")
+    site_name = _clean_text(order.get("site_name"), "votre marchand")
+    product_title = _clean_text(order.get("product_title") or order.get("product_name"), "votre commande")
+
+    return (
+        f"Bonjour {customer_name},\n\n"
+        f"Votre commande AfriPay Afrika {order_code} liée à {product_title} "
+        f"chez {site_name} a été livrée.\n\n"
+        f"Merci d’avoir utilisé AfriPay Afrika.\n"
+        f"Comment évaluez-vous votre expérience sur une note de 1 à 5 étoiles ?\n\n"
+        f"Votre avis nous aide à améliorer notre service."
+    )
+
+
+# ===============================
+# TAUX ET CONVERSIONS
+# ===============================
 def get_eur_xaf_rate():
     rate = get_setting("eur_xaf_rate", DEFAULT_EUR_XAF_RATE)
     return _to_float(rate, float(DEFAULT_EUR_XAF_RATE))
@@ -79,9 +231,9 @@ def calculate_order_amounts(product_price_eur, shipping_estimate_eur):
     }
 
 
-# -------------------------------
-# Création de commande
-# -------------------------------
+# ===============================
+# CRÉATION DE COMMANDE
+# ===============================
 def create_order_for_user(
     user_id,
     site_name,
@@ -106,19 +258,19 @@ def create_order_for_user(
         shipping_estimate_eur=shipping_estimate_eur,
     )
 
-    clean_site_name = str(site_name or "").strip()
-    clean_product_url = str(product_url or "").strip()
-    clean_product_title = str(product_title or "").strip()
-    clean_product_specs = str(product_specs or "").strip()
-    clean_delivery_address = str(delivery_address or "").strip()
-    clean_momo_provider = str(momo_provider).strip() if momo_provider else None
-    clean_country_code = str(country_code or "CM").strip().upper()
+    clean_site_name = _clean_text(site_name)
+    clean_product_url = _clean_text(product_url)
+    clean_product_title = _clean_text(product_title)
+    clean_product_specs = _clean_text(product_specs)
+    clean_delivery_address = _clean_text(delivery_address)
+    clean_momo_provider = _clean_optional_text(momo_provider)
+    clean_country_code = _clean_text(country_code or "CM", "CM").upper()
 
     if merchant_total_amount is None:
         merchant_total_amount = amounts["total_to_pay_eur"]
 
     clean_merchant_total_amount = _to_float(merchant_total_amount, 0.0)
-    clean_merchant_currency = str(merchant_currency or "EUR").strip().upper()
+    clean_merchant_currency = _clean_text(merchant_currency or "EUR", "EUR").upper()
 
     cur.execute(
         """
@@ -148,8 +300,8 @@ def create_order_for_user(
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            'CREEE',
-            'EN_ATTENTE',
+            %s,
+            %s,
             NOW(),
             NOW()
         )
@@ -174,6 +326,8 @@ def create_order_for_user(
             clean_momo_provider,
             clean_merchant_total_amount,
             clean_merchant_currency,
+            ORDER_STATUS_CREATED,
+            PAYMENT_STATUS_PENDING,
         ),
     )
 
@@ -187,9 +341,9 @@ def create_order_for_user(
     return result
 
 
-# -------------------------------
-# Lecture commande par id
-# -------------------------------
+# ===============================
+# LECTURE COMMANDE PAR ID
+# ===============================
 def get_order_by_id(order_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -212,9 +366,9 @@ def get_order_by_id(order_id):
     return row
 
 
-# -------------------------------
-# Mise à jour infos marchand (admin)
-# -------------------------------
+# ===============================
+# MISE À JOUR INFOS MARCHAND (ADMIN)
+# ===============================
 def update_merchant_info(
     order_id,
     merchant_order_number="",
@@ -226,6 +380,8 @@ def update_merchant_info(
 ):
     conn = get_conn()
     cur = conn.cursor()
+
+    clean_purchase_date = _clean_optional_text(merchant_purchase_date)
 
     cur.execute(
         """
@@ -241,12 +397,12 @@ def update_merchant_info(
         WHERE id = %s
         """,
         (
-            str(merchant_order_number or "").strip(),
-            str(merchant_confirmation_url or "").strip(),
-            str(merchant_tracking_url or "").strip(),
-            str(merchant_purchase_date or "").strip(),
-            str(merchant_status or "").strip(),
-            str(merchant_notes or "").strip(),
+            _clean_text(merchant_order_number),
+            _clean_text(merchant_confirmation_url),
+            _clean_text(merchant_tracking_url),
+            clean_purchase_date,
+            normalize_merchant_status(merchant_status),
+            _clean_text(merchant_notes),
             int(order_id),
         ),
     )
@@ -256,9 +412,9 @@ def update_merchant_info(
     conn.close()
 
 
-# -------------------------------
-# Liste commandes utilisateur
-# -------------------------------
+# ===============================
+# LISTE COMMANDES UTILISATEUR
+# ===============================
 def list_orders_for_user(user_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -281,9 +437,9 @@ def list_orders_for_user(user_id):
     return rows
 
 
-# -------------------------------
-# Recherche commande par code
-# -------------------------------
+# ===============================
+# RECHERCHE COMMANDE PAR CODE
+# ===============================
 def get_order_by_code(order_code):
     conn = get_conn()
     cur = conn.cursor()
@@ -295,7 +451,7 @@ def get_order_by_code(order_code):
         WHERE order_code = %s
         LIMIT 1
         """,
-        (str(order_code).strip(),),
+        (_clean_text(order_code),),
     )
 
     row = cur.fetchone()
@@ -306,26 +462,25 @@ def get_order_by_code(order_code):
     return row
 
 
-# -------------------------------
-# Mise à jour statut commande
-# -------------------------------
+# ===============================
+# MISE À JOUR STATUT COMMANDE
+# ===============================
 def update_order_status(order_id, order_status=None, payment_status=None):
     fields = []
     values = []
 
     if order_status is not None:
         fields.append("order_status = %s")
-        values.append(str(order_status).strip())
+        values.append(normalize_order_status(order_status))
 
     if payment_status is not None:
         fields.append("payment_status = %s")
-        values.append(str(payment_status).strip())
+        values.append(normalize_payment_status(payment_status))
 
-    fields.append("updated_at = NOW()")
-
-    if not values:
+    if not fields:
         return
 
+    fields.append("updated_at = NOW()")
     values.append(int(order_id))
 
     conn = get_conn()
@@ -345,9 +500,9 @@ def update_order_status(order_id, order_status=None, payment_status=None):
     conn.close()
 
 
-# -------------------------------
-# Liste complète (admin)
-# -------------------------------
+# ===============================
+# LISTE COMPLÈTE (ADMIN)
+# ===============================
 def list_orders_all():
     conn = get_conn()
     cur = conn.cursor()
