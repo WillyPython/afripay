@@ -1,4 +1,4 @@
- import secrets
+import secrets
 import urllib.parse
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -337,9 +337,6 @@ def build_whatsapp_share_url(message: str) -> str:
     return f"https://wa.me/?text={encoded_message}"
 
 
-# ===============================
-# CAPTCHA HUMAIN INTERNE
-# ===============================
 def refresh_captcha(prefix: str) -> None:
     a = secrets.randbelow(8) + 2
     b = secrets.randbelow(8) + 1
