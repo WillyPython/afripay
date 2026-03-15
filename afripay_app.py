@@ -47,6 +47,9 @@ MENU_OPTIONS = [
     "Admin",
 ]
 
+ORDER_TYPE_PHYSICAL = "Produit physique"
+ORDER_TYPE_SERVICE = "Service / paiement digital"
+
 
 def format_xaf(value):
     try:
@@ -287,7 +290,7 @@ def build_whatsapp_order_message(
     merchant_currency,
     product_url,
 ):
-    clean_product_title = str(product_title or "").strip() or "Produit non précisé"
+    clean_product_title = str(product_title or "").strip() or "Produit ou service non précisé"
     clean_product_url = str(product_url or "").strip()
     currency = str(merchant_currency or "").strip().upper() or "EUR"
 
@@ -299,7 +302,7 @@ def build_whatsapp_order_message(
         "Votre commande AfriPay a bien été créée ✅",
         "",
         f"Référence : {order_code}",
-        f"Produit : {clean_product_title}",
+        f"Produit / Service : {clean_product_title}",
         "Montant marchand estimé :",
         f"{format_xaf(total_xaf)} XAF ({format_eur(total_eur)} EUR)",
         f"Devise d'origine du marchand : {currency}",
@@ -309,7 +312,7 @@ def build_whatsapp_order_message(
         lines.extend(
             [
                 "",
-                "Lien du produit :",
+                "Lien du produit / service :",
                 clean_product_url,
             ]
         )
@@ -319,9 +322,11 @@ def build_whatsapp_order_message(
             "",
             "Vous pouvez suivre votre commande directement dans AfriPay.",
             "",
-            "🚀 AfriPay permet de payer vos commandes Amazon, Temu ou AliExpress depuis l’Afrique avec Mobile Money.",
+            "🚀 AfriPay permet de payer vos achats et services internationaux depuis l’Afrique avec Mobile Money.",
             "",
-            "💡 Essayez AfriPay pour vos prochaines commandes :",
+            "Exemples : Amazon, Temu, certifications, universités, logiciels, abonnements, services en ligne.",
+            "",
+            "💡 Essayez AfriPay pour vos prochains paiements internationaux :",
             AFRIPAY_PUBLIC_URL,
             "",
             "AfriPay Afrika",
@@ -405,6 +410,13 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
             help="Ce captcha est obligatoire. Sans le bon résultat, vous ne pourrez pas continuer.",
         )
 
+        status = get_captcha_status(prefix, captcha_input)
+        if captcha_input.strip():
+            if status == "ok":
+                st.success("Captcha correct ✅")
+            elif status in {"invalid", "missing"}:
+                st.error("Captcha incorrect ❌")
+
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 Nouveau calcul", key=f"{prefix}_captcha_refresh"):
@@ -412,7 +424,7 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
             clear_captcha_error(prefix)
             st.rerun()
 
-    st.caption("Sans le bon résultat du captcha, vous ne pourrez ni continuer ni valider cette action.")
+    st.caption("Saisissez le résultat exact du captcha, puis cliquez sur le bouton de validation de cette page.")
 
     return captcha_input
 
@@ -538,6 +550,32 @@ def render_sidebar() -> str:
 def page_connexion() -> None:
     st.title("Connexion")
     consume_flash_message()
+
+    st.markdown(
+        """
+### 🌍 Que pouvez-vous payer avec AfriPay ?
+
+AfriPay permet de payer vos **achats et services internationaux** avec Mobile Money depuis l’Afrique.
+
+**Exemples :**
+
+• 🛒 Produits : Amazon, Temu, AliExpress  
+• 🎓 Études : certifications de diplômes, universités, examens  
+• 💻 Digital : logiciels, hébergement, abonnements  
+• 📦 Commerce : achats pour revente locale
+"""
+    )
+
+    st.markdown(
+        """
+### 🔒 Pourquoi faire confiance à AfriPay ?
+
+✅ Connexion sécurisée par OTP  
+✅ Vérification humaine anti-bot  
+✅ Suivi des commandes directement dans AfriPay  
+✅ Paiements internationaux facilités
+"""
+    )
 
     st.info(
         "Connexion privée de test AfriPay. "
@@ -709,7 +747,7 @@ def page_dashboard_client() -> None:
     st.subheader("Résumé client")
     st.info(
         "AfriPay facilite vos paiements internationaux. "
-        "Le dédouanement et la livraison finale restent sous votre responsabilité via votre transitaire / agent."
+        "Le dédouanement et la livraison finale restent sous votre responsabilité via votre transitaire / agent lorsqu’il s’agit d’un produit physique."
     )
 
     if not rows:
@@ -761,7 +799,7 @@ def page_dashboard_client() -> None:
 
     with info1:
         st.write(f"**Référence :** {safe_get(latest, 'order_code', '—')}")
-        st.write(f"**Produit :** {get_product_label(latest)}")
+        st.write(f"**Produit / Service :** {get_product_label(latest)}")
         st.write(f"**Marchand :** {safe_get(latest, 'site_name', '—')}")
         st.write(f"**Montant XAF :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
         st.write(f"**Montant EUR :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
@@ -817,7 +855,7 @@ def page_tracking() -> None:
             return
 
         st.success(f"Commande : **{safe_get(row, 'order_code', '')}**")
-        st.write("**Produit :**", get_product_label(row))
+        st.write("**Produit / Service :**", get_product_label(row))
         st.write("**Marchand :**", safe_get(row, "site_name", "—"))
         st.write("**Montant XAF :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
         st.write("**Montant EUR :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
@@ -881,24 +919,26 @@ def page_creer_commande() -> None:
 
     st.info(
         "📌 AfriPay facilite le paiement international. "
-        "Le dédouanement et la livraison finale restent sous la responsabilité du client via son transitaire / agent."
+        "Pour un produit physique, le transitaire reste sous la responsabilité du client. "
+        "Pour un service ou paiement digital, aucun transitaire n’est requis."
     )
 
     st.markdown("### Comment créer votre commande")
     st.markdown(
         """
-        1. Collez d'abord le **lien du produit**  
-        2. Indiquez le **nom du produit**  
-        3. Saisissez le **montant total affiché par le marchand**  
-        4. Choisissez la **devise du marchand**  
-        5. Renseignez l'**adresse du transitaire / agence**  
-        6. Choisissez votre **opérateur Mobile Money**
-        """
+1. Choisissez le **type de commande**  
+2. Collez le **lien du produit ou du service**  
+3. Indiquez le **nom du produit ou du service**  
+4. Saisissez le **montant total affiché par le marchand**  
+5. Choisissez la **devise du marchand**  
+6. Si c’est un produit physique, renseignez l'**adresse du transitaire / agence**  
+7. Choisissez votre **opérateur Mobile Money**
+"""
     )
 
     st.warning(
         "Message juridique : AfriPay agit comme facilitateur de paiement international. "
-        "AfriPay n'assure pas le dédouanement ni la livraison finale. "
+        "AfriPay n'assure pas le dédouanement ni la livraison finale des produits physiques. "
         "Le client demeure responsable de son transitaire, de l'adresse de réception finale "
         "et des formalités éventuelles liées à l'importation."
     )
@@ -908,35 +948,40 @@ def page_creer_commande() -> None:
         "Ce montant peut être en XAF ou en EUR selon le site ou le vendeur."
     )
 
-    captcha_input = render_captcha_block("order", title="Captcha sécurité création commande")
-
     with st.form("create_order_form"):
         st.markdown("### 🔗 Informations principales")
 
+        order_type = st.selectbox(
+            "Type de commande *",
+            [ORDER_TYPE_PHYSICAL, ORDER_TYPE_SERVICE],
+            index=0,
+            help="Choisissez « Produit physique » pour un achat à livrer, ou « Service / paiement digital » pour une certification, un abonnement, un logiciel, etc.",
+        )
+
         product_url = st.text_input(
-            "🔗 Lien du produit ou de la commande *",
-            placeholder="Collez ici le lien Temu, Amazon, AliExpress, Zara, etc.",
-            help="Lien du produit ou de la commande sur le site marchand.",
+            "🔗 Lien du produit ou du service *",
+            placeholder="Collez ici le lien Amazon, Temu, WES, logiciel, hébergement, université, etc.",
+            help="Lien du produit ou du service à payer.",
         )
 
         st.caption(
-            "💡 Astuce : Collez ici le lien du produit ou de la commande. "
-            "Si votre commande contient plusieurs articles, saisissez simplement le montant total affiché par le marchand."
+            "💡 Astuce : Collez ici le lien du produit ou du service. "
+            "Si votre commande contient plusieurs éléments, saisissez simplement le montant total affiché par le marchand."
         )
 
         product_title = st.text_input(
-            "🛍 Nom du produit / de la commande *",
-            placeholder="Exemple : Chaussures femme pointure 39, Perruque brésilienne 18 pouces...",
+            "🛍 Nom du produit ou du service *",
+            placeholder="Exemple : Routeur Wi-Fi, Certification diplôme, Hébergement web annuel...",
         )
 
         site_name = st.text_input(
-            "🏪 Site marchand *",
-            placeholder="Exemple : Temu, Amazon, AliExpress, Zara...",
+            "🏪 Site marchand / organisme *",
+            placeholder="Exemple : Amazon, Temu, WES, IELTS, Hostinger, Université...",
         )
 
         product_specs = st.text_area(
-            "📋 Caractéristiques / variantes",
-            placeholder="Exemple : taille, couleur, quantité, modèle...",
+            "📋 Caractéristiques / détails utiles",
+            placeholder="Exemple : taille, couleur, quantité, numéro de dossier, type de service...",
         )
 
         st.markdown("### 💶 Montant du marchand")
@@ -952,7 +997,7 @@ def page_creer_commande() -> None:
             "Devise du marchand *",
             ["XAF", "EUR"],
             index=0,
-            help="Choisissez la devise réellement affichée par le site marchand ou le vendeur social.",
+            help="Choisissez la devise réellement affichée par le site marchand ou le service.",
         )
 
         preview_total_xaf, preview_total_eur = compute_dual_amounts(
@@ -967,11 +1012,19 @@ def page_creer_commande() -> None:
 
         st.markdown("### 🚚 Livraison et paiement")
 
-        delivery_address = st.text_area(
-            "📦 Adresse du transitaire / agence *",
-            placeholder="Exemple : nom de l'agence, ville, quartier, contact utile...",
-            help="Cette adresse doit correspondre à l'adresse utilisée pour la réception de la commande.",
-        )
+        requires_forwarder = order_type == ORDER_TYPE_PHYSICAL
+
+        if requires_forwarder:
+            delivery_address = st.text_area(
+                "📦 Adresse du transitaire / agence *",
+                placeholder="Exemple : nom de l'agence, ville, quartier, contact utile...",
+                help="Cette adresse doit correspondre à l'adresse utilisée pour la réception de la commande physique.",
+            )
+            st.caption("Saisissez le résultat exact du captcha, puis cliquez sur « Créer la commande ».")
+        else:
+            delivery_address = ""
+            st.success("Aucun transitaire requis ✅")
+            st.caption("Cette commande concerne un service / paiement digital. Saisissez le captcha puis cliquez sur « Créer la commande ».")
 
         momo_provider = st.selectbox(
             "📱 Opérateur Mobile Money",
@@ -982,6 +1035,8 @@ def page_creer_commande() -> None:
         client_ack = st.checkbox(
             "Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus."
         )
+
+        captcha_input = render_captcha_block("order", title="Captcha sécurité création commande")
 
         submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
@@ -1008,23 +1063,23 @@ def page_creer_commande() -> None:
         clear_captcha_error("order")
 
         if not product_url.strip():
-            st.error("Le lien du produit ou de la commande est obligatoire.")
+            st.error("Le lien du produit ou du service est obligatoire.")
             return
 
         if not product_title.strip():
-            st.error("Le nom du produit est obligatoire.")
+            st.error("Le nom du produit ou du service est obligatoire.")
             return
 
         if not site_name.strip():
-            st.error("Le site marchand est obligatoire.")
+            st.error("Le site marchand / organisme est obligatoire.")
             return
 
         if merchant_total_amount <= 0:
             st.error("Le montant total affiché par le marchand doit être supérieur à 0.")
             return
 
-        if not delivery_address.strip():
-            st.error("L'adresse du transitaire / agence est obligatoire.")
+        if requires_forwarder and not delivery_address.strip():
+            st.error("L'adresse du transitaire / agence est obligatoire pour un produit physique.")
             return
 
         if not client_ack:
@@ -1051,7 +1106,7 @@ def page_creer_commande() -> None:
             product_specs=product_specs.strip(),
             product_price_eur=float(product_price_eur),
             shipping_estimate_eur=float(shipping_estimate_eur),
-            delivery_address=delivery_address.strip(),
+            delivery_address=delivery_address.strip() if requires_forwarder else "",
             momo_provider=momo_provider.strip() or None,
         )
 
@@ -1112,8 +1167,8 @@ def page_mes_commandes() -> None:
 
         with st.expander(expander_title):
             st.write(f"**Créée le :** {safe_get(row, 'created_at', '—')}")
-            st.write(f"**Produit :** {get_product_label(row)}")
-            st.write(f"**Marchand :** {safe_get(row, 'site_name', '—')}")
+            st.write(f"**Produit / Service :** {get_product_label(row)}")
+            st.write(f"**Marchand / Organisme :** {safe_get(row, 'site_name', '—')}")
             st.write(f"**Montant XAF :** {format_xaf(total)} XAF")
             st.write(f"**Montant EUR :** {format_eur(total_eur)} €")
             st.write(f"**Frais vendeur :** {format_xaf(safe_get(row, 'seller_fee_xaf', 0))} XAF")
