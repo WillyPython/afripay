@@ -384,7 +384,7 @@ def get_captcha_status(prefix: str, user_input: str) -> str:
     return "ok"
 
 
-def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> str:
+def render_captcha_block(prefix: str, title: str = "Vérification humaine", allow_refresh: bool = True) -> str:
     ensure_captcha(prefix)
 
     a = st.session_state.get(f"{prefix}_captcha_a", 0)
@@ -400,7 +400,11 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
     if existing_error:
         st.error(existing_error)
 
-    col1, col2 = st.columns([3, 1])
+    if allow_refresh:
+        col1, col2 = st.columns([3, 1])
+    else:
+        col1 = st.container()
+        col2 = None
 
     with col1:
         captcha_input = st.text_input(
@@ -417,12 +421,13 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
             elif status in {"invalid", "missing"}:
                 st.error("Captcha incorrect ❌")
 
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Nouveau calcul", key=f"{prefix}_captcha_refresh"):
-            refresh_captcha(prefix)
-            clear_captcha_error(prefix)
-            st.rerun()
+    if allow_refresh and col2 is not None:
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔄 Nouveau calcul", key=f"{prefix}_captcha_refresh"):
+                refresh_captcha(prefix)
+                clear_captcha_error(prefix)
+                st.rerun()
 
     st.caption("Saisissez le résultat exact du captcha, puis cliquez sur le bouton de validation de cette page.")
 
@@ -587,7 +592,7 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
 
     render_test_otp_panel(current_phone=phone)
 
-    captcha_input = render_captcha_block("login", title="Captcha sécurité connexion")
+    captcha_input = render_captcha_block("login", title="Captcha sécurité connexion", allow_refresh=True)
 
     if st.button("Envoyer OTP", use_container_width=True):
         clean_phone = str(phone or "").strip()
@@ -948,6 +953,8 @@ def page_creer_commande() -> None:
         "Ce montant peut être en XAF ou en EUR selon le site ou le vendeur."
     )
 
+    captcha_input = render_captcha_block("order", title="Captcha sécurité création commande", allow_refresh=True)
+
     with st.form("create_order_form"):
         st.markdown("### 🔗 Informations principales")
 
@@ -1020,11 +1027,11 @@ def page_creer_commande() -> None:
                 placeholder="Exemple : nom de l'agence, ville, quartier, contact utile...",
                 help="Cette adresse doit correspondre à l'adresse utilisée pour la réception de la commande physique.",
             )
-            st.caption("Saisissez le résultat exact du captcha, puis cliquez sur « Créer la commande ».")
         else:
             delivery_address = ""
             st.success("Aucun transitaire requis ✅")
-            st.caption("Cette commande concerne un service / paiement digital. Saisissez le captcha puis cliquez sur « Créer la commande ».")
+
+        st.caption("Le captcha se valide au-dessus. Une fois correct, cliquez ici sur « Créer la commande ».")
 
         momo_provider = st.selectbox(
             "📱 Opérateur Mobile Money",
@@ -1035,8 +1042,6 @@ def page_creer_commande() -> None:
         client_ack = st.checkbox(
             "Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus."
         )
-
-        captcha_input = render_captcha_block("order", title="Captcha sécurité création commande")
 
         submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
