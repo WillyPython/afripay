@@ -38,8 +38,7 @@ AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 
 # Tarification validée v1
-AFRIPAY_PERCENT_FEE = 0.07
-AFRIPAY_FIXED_FEE_EUR = 4.0
+AFRIPAY_PERCENT_FEE = 0.20
 
 MENU_OPTIONS = [
     "Connexion",
@@ -285,7 +284,7 @@ def calculate_afripay_fee(merchant_eur):
     if merchant_eur <= 0:
         return 0.0, 0.0
 
-    fee_eur = (merchant_eur * AFRIPAY_PERCENT_FEE) + AFRIPAY_FIXED_FEE_EUR
+    fee_eur = merchant_eur * AFRIPAY_PERCENT_FEE
     fee_xaf = eur_to_xaf(fee_eur)
     return fee_xaf, fee_eur
 
@@ -957,7 +956,7 @@ def render_payment_summary(preview):
         st.metric("Total à payer", f"{format_eur(preview['total_to_pay_eur'])} EUR")
 
     st.info(
-        f"Tarification AfriPay v1 : {int(AFRIPAY_PERCENT_FEE * 100)} % + {format_eur(AFRIPAY_FIXED_FEE_EUR)} EUR fixes"
+        f"Tarification AfriPay v1 : {int(AFRIPAY_PERCENT_FEE * 100)} % du montant marchand, sans frais fixe"
     )
 
 
