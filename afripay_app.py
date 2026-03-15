@@ -437,8 +437,9 @@ def consume_flash_message() -> None:
 
 
 def render_test_otp_panel(current_phone: str = "") -> None:
-    otp_code = str(st.session_state.get("otp_code", "")).strip()
-    otp_phone = str(st.session_state.get("otp_phone", "")).strip()
+    current_phone = str(current_phone or "").strip()
+    otp_code = str(st.session_state.get("otp_code", "") or "").strip()
+    otp_phone = str(st.session_state.get("otp_phone", "") or "").strip()
 
     if not otp_code:
         st.info(
@@ -447,7 +448,7 @@ def render_test_otp_panel(current_phone: str = "") -> None:
         )
         return
 
-    if current_phone.strip() and otp_phone and current_phone.strip() != otp_phone:
+    if current_phone and otp_phone and current_phone != otp_phone:
         st.warning(
             "Un OTP de test existe déjà pour un autre numéro. "
             "Utilise le même numéro ou demande un nouvel OTP."
@@ -535,7 +536,7 @@ def page_connexion() -> None:
         "Pour le moment, le code OTP est affiché directement à l’écran."
     )
 
-    default_phone = st.session_state.get("otp_phone", "")
+    default_phone = str(st.session_state.get("otp_phone", "") or "")
     phone = st.text_input("Téléphone", value=default_phone, placeholder="+2376...")
 
     render_test_otp_panel(current_phone=phone)
@@ -543,7 +544,7 @@ def page_connexion() -> None:
     captcha_input = render_captcha_block("login", title="Captcha sécurité connexion")
 
     if st.button("Envoyer OTP", use_container_width=True):
-        clean_phone = phone.strip()
+        clean_phone = str(phone or "").strip()
 
         if not clean_phone:
             st.error("Entre ton numéro.")
@@ -573,7 +574,6 @@ def page_connexion() -> None:
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
         st.session_state["otp_phone"] = clean_phone
-        st.session_state["login_phone_input"] = clean_phone
         st.success("OTP de test généré avec succès ✅")
         st.rerun()
 
@@ -586,9 +586,9 @@ def page_connexion() -> None:
     email = st.text_input("Email", placeholder="Optionnel")
 
     if st.button("Se connecter", use_container_width=True):
-        stored_otp = str(st.session_state.get("otp_code", "")).strip()
-        stored_phone = str(st.session_state.get("otp_phone", "")).strip()
-        clean_phone = phone.strip()
+        stored_otp = str(st.session_state.get("otp_code", "") or "").strip()
+        stored_phone = str(st.session_state.get("otp_phone", "") or "").strip()
+        clean_phone = str(phone or "").strip()
 
         if not stored_otp:
             st.error("Demande d'abord un OTP.")
@@ -602,12 +602,12 @@ def page_connexion() -> None:
             st.error("Téléphone différent de celui utilisé pour l’OTP.")
             return
 
-        if otp_input.strip() != stored_otp:
+        if str(otp_input or "").strip() != stored_otp:
             st.error("OTP incorrect.")
             return
 
-        clean_name = name.strip()
-        clean_email = email.strip()
+        clean_name = str(name or "").strip()
+        clean_email = str(email or "").strip()
 
         user_id = upsert_user(
             phone=clean_phone,
