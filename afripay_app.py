@@ -51,39 +51,81 @@ ORDER_TYPE_PHYSICAL = "Produit physique"
 ORDER_TYPE_SERVICE = "Service / paiement digital"
 
 
-def format_xaf(value):
+def to_float(value, default=0.0):
     try:
-        value = float(value or 0)
+        return float(value or 0)
     except (TypeError, ValueError):
-        value = 0
+        return default
 
+
+def format_xaf(value):
+    value = to_float(value, 0.0)
     rounded = int(value) if float(value).is_integer() else int(value) + 1
     return f"{rounded:,}".replace(",", ".")
 
 
 def format_eur(value):
-    try:
-        value = float(value or 0)
-    except (TypeError, ValueError):
-        value = 0.0
-
+    value = to_float(value, 0.0)
     return f"{value:,.2f}".replace(",", " ").replace(".", ",")
 
 
 def eur_to_xaf(value_eur):
-    try:
-        value_eur = float(value_eur or 0)
-    except (TypeError, ValueError):
-        value_eur = 0.0
+    value_eur = to_float(value_eur, 0.0)
     return value_eur * EUR_TO_XAF_RATE
 
 
 def xaf_to_eur(value_xaf):
-    try:
-        value_xaf = float(value_xaf or 0)
-    except (TypeError, ValueError):
-        value_xaf = 0.0
+    value_xaf = to_float(value_xaf, 0.0)
     return value_xaf / EUR_TO_XAF_RATE if EUR_TO_XAF_RATE else 0.0
+
+
+def calculate_afripay_fee_xaf(merchant_xaf):
+    """
+    Règle actuelle prudente :
+    on garde 0 XAF tant qu'une grille tarifaire officielle AfriPay
+    n'est pas encore validée côté métier et backend.
+    """
+    merchant_xaf = to_float(merchant_xaf, 0.0)
+    if merchant_xaf <= 0:
+        return 0.0
+    return 0.0
+
+
+def compute_dual_amounts(merchant_total_amount, merchant_currency):
+    currency = str(merchant_currency or "").strip().upper()
+    amount = to_float(merchant_total_amount, 0.0)
+
+    if currency == "XAF":
+        merchant_xaf = amount
+        merchant_eur = xaf_to_eur(amount)
+    elif currency == "EUR":
+        merchant_eur = amount
+        merchant_xaf = eur_to_xaf(amount)
+    else:
+        merchant_xaf = 0.0
+        merchant_eur = 0.0
+
+    return merchant_xaf, merchant_eur
+
+
+def compute_payment_preview(merchant_total_amount, merchant_currency):
+    merchant_xaf, merchant_eur = compute_dual_amounts(
+        merchant_total_amount,
+        merchant_currency,
+    )
+
+    afripay_fee_xaf = calculate_afripay_fee_xaf(merchant_xaf)
+    total_to_pay_xaf = merchant_xaf + afripay_fee_xaf
+    total_to_pay_eur = xaf_to_eur(total_to_pay_xaf)
+
+    return {
+        "merchant_xaf": merchant_xaf,
+        "merchant_eur": merchant_eur,
+        "afripay_fee_xaf": afripay_fee_xaf,
+        "afripay_fee_eur": xaf_to_eur(afripay_fee_xaf),
+        "total_to_pay_xaf": total_to_pay_xaf,
+        "total_to_pay_eur": total_to_pay_eur,
+    }
 
 
 def safe_get(row, key, default=""):
@@ -265,24 +307,6 @@ def restore_session_from_query_params() -> None:
     touch_session(token)
 
 
-def compute_dual_amounts(merchant_total_amount, merchant_currency):
-    currency = str(merchant_currency or "").strip().upper()
-
-    try:
-        amount = float(merchant_total_amount or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
-
-    if currency == "XAF":
-        total_xaf = amount
-        total_eur = xaf_to_eur(amount)
-    else:
-        total_eur = amount
-        total_xaf = eur_to_xaf(amount)
-
-    return total_xaf, total_eur
-
-
 def build_whatsapp_order_message(
     order_code,
     product_title,
@@ -294,7 +318,7 @@ def build_whatsapp_order_message(
     clean_product_url = str(product_url or "").strip()
     currency = str(merchant_currency or "").strip().upper() or "EUR"
 
-    total_xaf, total_eur = compute_dual_amounts(merchant_total_amount, currency)
+    preview = compute_payment_preview(merchant_total_amount, currency)
 
     lines = [
         "Bonjour 👋",
@@ -303,8 +327,11 @@ def build_whatsapp_order_message(
         "",
         f"Référence : {order_code}",
         f"Produit / Service : {clean_product_title}",
-        "Montant marchand estimé :",
-        f"{format_xaf(total_xaf)} XAF ({format_eur(total_eur)} EUR)",
+        "",
+        "Résumé financier estimatif :",
+        f"Montant marchand : {format_xaf(preview['merchant_xaf'])} XAF ({format_eur(preview['merchant_eur'])} EUR)",
+        f"Frais AfriPay : {format_xaf(preview['afripay_fee_xaf'])} XAF ({format_eur(preview['afripay_fee_eur'])} EUR)",
+        f"Total à payer : {format_xaf(preview['total_to_pay_xaf'])} XAF ({format_eur(preview['total_to_pay_eur'])} EUR)",
         f"Devise d'origine du marchand : {currency}",
     ]
 
@@ -714,8 +741,8 @@ def page_dashboard_client() -> None:
 
     for row in rows:
         raw_status = str(safe_get(row, "order_status", "")).upper()
-        total_xaf = float(safe_get(row, "total_xaf", 0) or 0)
-        total_eur = float(safe_get(row, "total_to_pay_eur", 0) or 0)
+        total_xaf = to_float(safe_get(row, "total_xaf", 0), 0.0)
+        total_eur = to_float(safe_get(row, "total_to_pay_eur", 0), 0.0)
 
         total_xaf_sum += total_xaf
         total_eur_sum += total_eur
@@ -806,8 +833,8 @@ def page_dashboard_client() -> None:
         st.write(f"**Référence :** {safe_get(latest, 'order_code', '—')}")
         st.write(f"**Produit / Service :** {get_product_label(latest)}")
         st.write(f"**Marchand :** {safe_get(latest, 'site_name', '—')}")
-        st.write(f"**Montant XAF :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
-        st.write(f"**Montant EUR :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
+        st.write(f"**Total XAF :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
+        st.write(f"**Total EUR :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
 
     with info2:
         st.write(f"**Statut commande :** {normalize_status(safe_get(latest, 'order_status', '—'))}")
@@ -862,8 +889,8 @@ def page_tracking() -> None:
         st.success(f"Commande : **{safe_get(row, 'order_code', '')}**")
         st.write("**Produit / Service :**", get_product_label(row))
         st.write("**Marchand :**", safe_get(row, "site_name", "—"))
-        st.write("**Montant XAF :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
-        st.write("**Montant EUR :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
+        st.write("**Total XAF :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
+        st.write("**Total EUR :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
         st.write("**Statut commande :**", normalize_status(safe_get(row, "order_status", "—")))
         st.write("**Statut paiement :**", safe_get(row, "payment_status", "—"))
         st.write("**Adresse transitaire :**", safe_get(row, "delivery_address", "—"))
@@ -936,8 +963,9 @@ def page_creer_commande() -> None:
 3. Indiquez le **nom du produit ou du service**  
 4. Saisissez le **montant total affiché par le marchand**  
 5. Choisissez la **devise du marchand**  
-6. Si c’est un produit physique, renseignez l'**adresse du transitaire / agence**  
-7. Choisissez votre **opérateur Mobile Money**
+6. Vérifiez le **résumé financier AfriPay**  
+7. Si c’est un produit physique, renseignez l'**adresse du transitaire / agence**  
+8. Choisissez votre **opérateur Mobile Money**
 """
     )
 
@@ -1007,14 +1035,33 @@ def page_creer_commande() -> None:
             help="Choisissez la devise réellement affichée par le site marchand ou le service.",
         )
 
-        preview_total_xaf, preview_total_eur = compute_dual_amounts(
+        payment_preview = compute_payment_preview(
             merchant_total_amount,
             merchant_currency,
         )
 
+        st.markdown("### 🧾 Résumé financier AfriPay")
+
+        st.info(
+            f"Montant marchand saisi : "
+            f"{format_xaf(payment_preview['merchant_xaf'])} XAF "
+            f"({format_eur(payment_preview['merchant_eur'])} EUR)"
+        )
+
+        col_fee_1, col_fee_2 = st.columns(2)
+        with col_fee_1:
+            st.metric(
+                "Frais AfriPay",
+                f"{format_xaf(payment_preview['afripay_fee_xaf'])} XAF",
+            )
+        with col_fee_2:
+            st.metric(
+                "Total à payer",
+                f"{format_xaf(payment_preview['total_to_pay_xaf'])} XAF",
+            )
+
         st.caption(
-            f"Montant marchand estimé : {format_xaf(preview_total_xaf)} XAF "
-            f"({format_eur(preview_total_eur)} EUR)"
+            f"Équivalent total estimé : {format_eur(payment_preview['total_to_pay_eur'])} EUR"
         )
 
         st.markdown("### 🚚 Livraison et paiement")
@@ -1031,13 +1078,18 @@ def page_creer_commande() -> None:
             delivery_address = ""
             st.success("Aucun transitaire requis ✅")
 
-        st.caption("Le captcha se valide au-dessus. Une fois correct, cliquez ici sur « Créer la commande ».")
-
         momo_provider = st.selectbox(
             "📱 Opérateur Mobile Money",
             ["", "MTN", "Orange"],
             index=0,
         )
+
+        if momo_provider.strip():
+            st.caption(f"Mode de paiement sélectionné : {momo_provider.strip()} Mobile Money")
+        else:
+            st.caption("Choisissez votre opérateur Mobile Money pour finaliser votre commande.")
+
+        st.caption("Le captcha se valide au-dessus. Une fois correct, cliquez ici sur « Créer la commande ».")
 
         client_ack = st.checkbox(
             "Je confirme avoir lu et accepté les informations juridiques et opérationnelles ci-dessus."
@@ -1091,16 +1143,16 @@ def page_creer_commande() -> None:
             st.error("Tu dois valider les informations juridiques et opérationnelles avant de créer la commande.")
             return
 
-        final_total_xaf, final_total_eur = compute_dual_amounts(
+        final_preview = compute_payment_preview(
             merchant_total_amount,
             merchant_currency,
         )
 
-        if merchant_currency == "EUR":
-            product_price_eur = float(merchant_total_amount)
+        if str(merchant_currency).strip().upper() == "EUR":
+            product_price_eur = to_float(merchant_total_amount, 0.0)
             shipping_estimate_eur = 0.0
         else:
-            product_price_eur = float(final_total_eur)
+            product_price_eur = final_preview["merchant_eur"]
             shipping_estimate_eur = 0.0
 
         order_code = create_order_for_user(
@@ -1122,7 +1174,12 @@ def page_creer_commande() -> None:
         )
 
         st.success(
-            f"Montant retenu : {format_xaf(final_total_xaf)} XAF ({format_eur(final_total_eur)} EUR)"
+            f"Résumé estimatif retenu : "
+            f"Montant marchand {format_xaf(final_preview['merchant_xaf'])} XAF "
+            f"({format_eur(final_preview['merchant_eur'])} EUR) | "
+            f"Frais AfriPay {format_xaf(final_preview['afripay_fee_xaf'])} XAF | "
+            f"Total {format_xaf(final_preview['total_to_pay_xaf'])} XAF "
+            f"({format_eur(final_preview['total_to_pay_eur'])} EUR)"
         )
 
         whatsapp_message = build_whatsapp_order_message(
