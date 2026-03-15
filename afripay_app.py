@@ -37,6 +37,16 @@ from ui.branding import render_sidebar_branding
 AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 
+MENU_OPTIONS = [
+    "Connexion",
+    "Dashboard Client",
+    "Suivre commande",
+    "Simuler",
+    "Créer commande",
+    "Mes commandes",
+    "Admin",
+]
+
 
 def format_xaf(value):
     try:
@@ -410,11 +420,87 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine") -> s
     return captcha_input
 
 
+def init_navigation_state() -> None:
+    if "main_menu" not in st.session_state:
+        st.session_state["main_menu"] = "Connexion"
+
+
+def set_menu(menu_name: str) -> None:
+    if menu_name in MENU_OPTIONS:
+        st.session_state["main_menu"] = menu_name
+
+
+def consume_flash_message() -> None:
+    flash_message = st.session_state.pop("flash_message", "")
+    if flash_message:
+        st.success(flash_message)
+
+
+def render_test_otp_panel(current_phone: str = "") -> None:
+    otp_code = str(st.session_state.get("otp_code", "")).strip()
+    otp_phone = str(st.session_state.get("otp_phone", "")).strip()
+
+    if not otp_code:
+        st.info(
+            "Aucun OTP de test généré pour le moment. "
+            "Clique sur « Envoyer OTP » pour générer un code visible à l’écran."
+        )
+        return
+
+    if current_phone.strip() and otp_phone and current_phone.strip() != otp_phone:
+        st.warning(
+            "Un OTP de test existe déjà pour un autre numéro. "
+            "Utilise le même numéro ou demande un nouvel OTP."
+        )
+
+    st.markdown("### OTP de test actif")
+    st.warning(
+        "Mode TEST : cet OTP est affiché à l’écran pour les essais privés. "
+        "Il n’est pas encore envoyé par SMS ni par WhatsApp."
+    )
+    st.markdown(
+        f"""
+<div style="
+    border: 2px solid #16a34a;
+    border-radius: 12px;
+    padding: 18px;
+    margin: 10px 0 16px 0;
+    background-color: rgba(22, 163, 74, 0.08);
+    text-align: center;
+">
+    <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+        CODE OTP DE TEST
+    </div>
+    <div style="font-size: 38px; font-weight: 900; letter-spacing: 8px;">
+        {otp_code}
+    </div>
+    <div style="margin-top: 10px; font-size: 14px;">
+        Téléphone lié : <strong>{otp_phone or "—"}</strong>
+    </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.info(
+        "Tant que tu ne demandes pas un nouvel OTP ou que tu ne te connectes pas avec succès, "
+        "ce code reste visible ici à l’écran."
+    )
+
+
+def clear_login_test_otp() -> None:
+    st.session_state.pop("otp_code", None)
+    st.session_state.pop("otp_phone", None)
+
+
 def render_sidebar() -> str:
     render_sidebar_branding()
 
     if st.session_state.get("logged_in"):
         st.sidebar.success("Connecté ✅")
+        connected_phone = st.session_state.get("phone", "")
+        if connected_phone:
+            st.sidebar.caption(f"Téléphone : {connected_phone}")
+
         if st.sidebar.button("Déconnexion"):
             token = st.session_state.get("session_token")
 
@@ -422,36 +508,44 @@ def render_sidebar() -> str:
                 deactivate_session(token)
 
             save_session_token_in_query_params(None)
+            clear_login_test_otp()
             logout_user()
+            set_menu("Connexion")
             st.rerun()
     else:
         st.sidebar.info("Non connecté")
 
     st.sidebar.markdown("---")
 
-    return st.sidebar.radio(
+    st.sidebar.radio(
         "Menu",
-        [
-            "Connexion",
-            "Dashboard Client",
-            "Suivre commande",
-            "Simuler",
-            "Créer commande",
-            "Mes commandes",
-            "Admin",
-        ],
-        index=0,
+        MENU_OPTIONS,
+        key="main_menu",
     )
+
+    return st.session_state["main_menu"]
 
 
 def page_connexion() -> None:
     st.title("Connexion")
+    consume_flash_message()
 
-    phone = st.text_input("Téléphone", placeholder="+2376...")
+    st.info(
+        "Connexion privée de test AfriPay. "
+        "Pour le moment, le code OTP est affiché directement à l’écran."
+    )
+
+    default_phone = st.session_state.get("otp_phone", "")
+    phone = st.text_input("Téléphone", value=default_phone, placeholder="+2376...")
+
+    render_test_otp_panel(current_phone=phone)
+
     captcha_input = render_captcha_block("login", title="Captcha sécurité connexion")
 
-    if st.button("Envoyer OTP"):
-        if not phone.strip():
+    if st.button("Envoyer OTP", use_container_width=True):
+        clean_phone = phone.strip()
+
+        if not clean_phone:
             st.error("Entre ton numéro.")
             return
 
@@ -478,27 +572,40 @@ def page_connexion() -> None:
 
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
-        st.session_state["otp_phone"] = phone.strip()
-        st.info(f"OTP TEST : **{otp}**")
+        st.session_state["otp_phone"] = clean_phone
+        st.session_state["login_phone_input"] = clean_phone
+        st.success("OTP de test généré avec succès ✅")
+        st.rerun()
 
-    otp_input = st.text_input("Entrer OTP", type="password")
+    otp_input = st.text_input(
+        "Entrer OTP",
+        key="login_otp_input",
+        placeholder="Entrez ici le code OTP affiché ci-dessus",
+    )
     name = st.text_input("Nom", placeholder="Optionnel")
     email = st.text_input("Email", placeholder="Optionnel")
 
-    if st.button("Se connecter"):
-        if not st.session_state.get("otp_code"):
+    if st.button("Se connecter", use_container_width=True):
+        stored_otp = str(st.session_state.get("otp_code", "")).strip()
+        stored_phone = str(st.session_state.get("otp_phone", "")).strip()
+        clean_phone = phone.strip()
+
+        if not stored_otp:
             st.error("Demande d'abord un OTP.")
             return
 
-        if phone.strip() != st.session_state.get("otp_phone"):
+        if not clean_phone:
+            st.error("Entre le numéro de téléphone utilisé pour demander l’OTP.")
+            return
+
+        if clean_phone != stored_phone:
             st.error("Téléphone différent de celui utilisé pour l’OTP.")
             return
 
-        if otp_input.strip() != st.session_state.get("otp_code"):
+        if otp_input.strip() != stored_otp:
             st.error("OTP incorrect.")
             return
 
-        clean_phone = phone.strip()
         clean_name = name.strip()
         clean_email = email.strip()
 
@@ -524,13 +631,16 @@ def page_connexion() -> None:
 
         clear_captcha_error("login")
         refresh_captcha("login")
+        clear_login_test_otp()
 
-        st.success("Connexion réussie ✅")
+        st.session_state["flash_message"] = "Connexion réussie ✅"
+        set_menu("Dashboard Client")
         st.rerun()
 
 
 def page_dashboard_client() -> None:
     st.title("Dashboard Client")
+    consume_flash_message()
 
     if not st.session_state.get("logged_in"):
         st.warning("Tu dois être connecté pour accéder à ton tableau de bord.")
@@ -1071,6 +1181,7 @@ def main() -> None:
     init_db()
     ensure_defaults()
     init_session()
+    init_navigation_state()
     restore_session_from_query_params()
 
     menu = render_sidebar()
