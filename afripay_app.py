@@ -37,6 +37,10 @@ from ui.branding import render_sidebar_branding
 AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 
+# Tarification validée v1
+AFRIPAY_PERCENT_FEE = 0.07
+AFRIPAY_FIXED_FEE_EUR = 4.0
+
 MENU_OPTIONS = [
     "Connexion",
     "Dashboard Client",
@@ -77,55 +81,6 @@ def eur_to_xaf(value_eur):
 def xaf_to_eur(value_xaf):
     value_xaf = to_float(value_xaf, 0.0)
     return value_xaf / EUR_TO_XAF_RATE if EUR_TO_XAF_RATE else 0.0
-
-
-def calculate_afripay_fee_xaf(merchant_xaf):
-    """
-    Règle actuelle prudente :
-    on garde 0 XAF tant qu'une grille tarifaire officielle AfriPay
-    n'est pas encore validée côté métier et backend.
-    """
-    merchant_xaf = to_float(merchant_xaf, 0.0)
-    if merchant_xaf <= 0:
-        return 0.0
-    return 0.0
-
-
-def compute_dual_amounts(merchant_total_amount, merchant_currency):
-    currency = str(merchant_currency or "").strip().upper()
-    amount = to_float(merchant_total_amount, 0.0)
-
-    if currency == "XAF":
-        merchant_xaf = amount
-        merchant_eur = xaf_to_eur(amount)
-    elif currency == "EUR":
-        merchant_eur = amount
-        merchant_xaf = eur_to_xaf(amount)
-    else:
-        merchant_xaf = 0.0
-        merchant_eur = 0.0
-
-    return merchant_xaf, merchant_eur
-
-
-def compute_payment_preview(merchant_total_amount, merchant_currency):
-    merchant_xaf, merchant_eur = compute_dual_amounts(
-        merchant_total_amount,
-        merchant_currency,
-    )
-
-    afripay_fee_xaf = calculate_afripay_fee_xaf(merchant_xaf)
-    total_to_pay_xaf = merchant_xaf + afripay_fee_xaf
-    total_to_pay_eur = xaf_to_eur(total_to_pay_xaf)
-
-    return {
-        "merchant_xaf": merchant_xaf,
-        "merchant_eur": merchant_eur,
-        "afripay_fee_xaf": afripay_fee_xaf,
-        "afripay_fee_eur": xaf_to_eur(afripay_fee_xaf),
-        "total_to_pay_xaf": total_to_pay_xaf,
-        "total_to_pay_eur": total_to_pay_eur,
-    }
 
 
 def safe_get(row, key, default=""):
@@ -307,6 +262,55 @@ def restore_session_from_query_params() -> None:
     touch_session(token)
 
 
+def compute_dual_amounts(merchant_total_amount, merchant_currency):
+    currency = str(merchant_currency or "").strip().upper()
+    amount = to_float(merchant_total_amount, 0.0)
+
+    if currency == "XAF":
+        merchant_xaf = amount
+        merchant_eur = xaf_to_eur(amount)
+    elif currency == "EUR":
+        merchant_eur = amount
+        merchant_xaf = eur_to_xaf(amount)
+    else:
+        merchant_xaf = 0.0
+        merchant_eur = 0.0
+
+    return merchant_xaf, merchant_eur
+
+
+def calculate_afripay_fee(merchant_eur):
+    merchant_eur = to_float(merchant_eur, 0.0)
+
+    if merchant_eur <= 0:
+        return 0.0, 0.0
+
+    fee_eur = (merchant_eur * AFRIPAY_PERCENT_FEE) + AFRIPAY_FIXED_FEE_EUR
+    fee_xaf = eur_to_xaf(fee_eur)
+    return fee_xaf, fee_eur
+
+
+def compute_payment_preview(merchant_total_amount, merchant_currency):
+    merchant_xaf, merchant_eur = compute_dual_amounts(
+        merchant_total_amount,
+        merchant_currency,
+    )
+
+    afripay_fee_xaf, afripay_fee_eur = calculate_afripay_fee(merchant_eur)
+
+    total_to_pay_xaf = merchant_xaf + afripay_fee_xaf
+    total_to_pay_eur = merchant_eur + afripay_fee_eur
+
+    return {
+        "merchant_xaf": merchant_xaf,
+        "merchant_eur": merchant_eur,
+        "afripay_fee_xaf": afripay_fee_xaf,
+        "afripay_fee_eur": afripay_fee_eur,
+        "total_to_pay_xaf": total_to_pay_xaf,
+        "total_to_pay_eur": total_to_pay_eur,
+    }
+
+
 def build_whatsapp_order_message(
     order_code,
     product_title,
@@ -457,7 +461,6 @@ def render_captcha_block(prefix: str, title: str = "Vérification humaine", allo
                 st.rerun()
 
     st.caption("Saisissez le résultat exact du captcha, puis cliquez sur le bouton de validation de cette page.")
-
     return captcha_input
 
 
@@ -936,6 +939,28 @@ def page_simuler() -> None:
     st.metric("Total à payer (XAF)", f"{format_xaf(total)} XAF")
 
 
+def render_payment_summary(preview):
+    st.markdown("### 🧾 Résumé financier AfriPay")
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown("#### Valeurs en XAF")
+        st.metric("Montant marchand", f"{format_xaf(preview['merchant_xaf'])} XAF")
+        st.metric("Frais AfriPay", f"{format_xaf(preview['afripay_fee_xaf'])} XAF")
+        st.metric("Total à payer", f"{format_xaf(preview['total_to_pay_xaf'])} XAF")
+
+    with c2:
+        st.markdown("#### Valeurs en EUR")
+        st.metric("Montant marchand", f"{format_eur(preview['merchant_eur'])} EUR")
+        st.metric("Frais AfriPay", f"{format_eur(preview['afripay_fee_eur'])} EUR")
+        st.metric("Total à payer", f"{format_eur(preview['total_to_pay_eur'])} EUR")
+
+    st.info(
+        f"Tarification AfriPay v1 : {int(AFRIPAY_PERCENT_FEE * 100)} % + {format_eur(AFRIPAY_FIXED_FEE_EUR)} EUR fixes"
+    )
+
+
 def page_creer_commande() -> None:
     st.title("Créer commande")
     consume_flash_message()
@@ -983,20 +1008,43 @@ def page_creer_commande() -> None:
 
     captcha_input = render_captcha_block("order", title="Captcha sécurité création commande", allow_refresh=True)
 
+    st.markdown("### 💳 Paramètres de paiement")
+    order_type = st.selectbox(
+        "Type de commande *",
+        [ORDER_TYPE_PHYSICAL, ORDER_TYPE_SERVICE],
+        key="create_order_type",
+        help="Choisissez « Produit physique » pour un achat à livrer, ou « Service / paiement digital » pour une certification, un abonnement, un logiciel, etc.",
+    )
+
+    merchant_total_amount = st.number_input(
+        "Montant total affiché par le marchand *",
+        min_value=0.0,
+        value=0.0,
+        step=1.0,
+        key="create_order_amount",
+    )
+
+    merchant_currency = st.selectbox(
+        "Devise du marchand *",
+        ["XAF", "EUR"],
+        index=0,
+        key="create_order_currency",
+        help="Choisissez la devise réellement affichée par le site marchand ou le service.",
+    )
+
+    payment_preview = compute_payment_preview(
+        merchant_total_amount,
+        merchant_currency,
+    )
+
+    render_payment_summary(payment_preview)
+
     with st.form("create_order_form"):
         st.markdown("### 🔗 Informations principales")
-
-        order_type = st.selectbox(
-            "Type de commande *",
-            [ORDER_TYPE_PHYSICAL, ORDER_TYPE_SERVICE],
-            index=0,
-            help="Choisissez « Produit physique » pour un achat à livrer, ou « Service / paiement digital » pour une certification, un abonnement, un logiciel, etc.",
-        )
 
         product_url = st.text_input(
             "🔗 Lien du produit ou du service *",
             placeholder="Collez ici le lien Amazon, Temu, WES, logiciel, hébergement, université, etc.",
-            help="Lien du produit ou du service à payer.",
         )
 
         st.caption(
@@ -1017,51 +1065,6 @@ def page_creer_commande() -> None:
         product_specs = st.text_area(
             "📋 Caractéristiques / détails utiles",
             placeholder="Exemple : taille, couleur, quantité, numéro de dossier, type de service...",
-        )
-
-        st.markdown("### 💶 Montant du marchand")
-
-        merchant_total_amount = st.number_input(
-            "Montant total affiché par le marchand *",
-            min_value=0.0,
-            value=0.0,
-            step=1.0,
-        )
-
-        merchant_currency = st.selectbox(
-            "Devise du marchand *",
-            ["XAF", "EUR"],
-            index=0,
-            help="Choisissez la devise réellement affichée par le site marchand ou le service.",
-        )
-
-        payment_preview = compute_payment_preview(
-            merchant_total_amount,
-            merchant_currency,
-        )
-
-        st.markdown("### 🧾 Résumé financier AfriPay")
-
-        st.info(
-            f"Montant marchand saisi : "
-            f"{format_xaf(payment_preview['merchant_xaf'])} XAF "
-            f"({format_eur(payment_preview['merchant_eur'])} EUR)"
-        )
-
-        col_fee_1, col_fee_2 = st.columns(2)
-        with col_fee_1:
-            st.metric(
-                "Frais AfriPay",
-                f"{format_xaf(payment_preview['afripay_fee_xaf'])} XAF",
-            )
-        with col_fee_2:
-            st.metric(
-                "Total à payer",
-                f"{format_xaf(payment_preview['total_to_pay_xaf'])} XAF",
-            )
-
-        st.caption(
-            f"Équivalent total estimé : {format_eur(payment_preview['total_to_pay_eur'])} EUR"
         )
 
         st.markdown("### 🚚 Livraison et paiement")
@@ -1175,11 +1178,9 @@ def page_creer_commande() -> None:
 
         st.success(
             f"Résumé estimatif retenu : "
-            f"Montant marchand {format_xaf(final_preview['merchant_xaf'])} XAF "
-            f"({format_eur(final_preview['merchant_eur'])} EUR) | "
-            f"Frais AfriPay {format_xaf(final_preview['afripay_fee_xaf'])} XAF | "
-            f"Total {format_xaf(final_preview['total_to_pay_xaf'])} XAF "
-            f"({format_eur(final_preview['total_to_pay_eur'])} EUR)"
+            f"Montant marchand {format_xaf(final_preview['merchant_xaf'])} XAF ({format_eur(final_preview['merchant_eur'])} EUR) | "
+            f"Frais AfriPay {format_xaf(final_preview['afripay_fee_xaf'])} XAF ({format_eur(final_preview['afripay_fee_eur'])} EUR) | "
+            f"Total {format_xaf(final_preview['total_to_pay_xaf'])} XAF ({format_eur(final_preview['total_to_pay_eur'])} EUR)"
         )
 
         whatsapp_message = build_whatsapp_order_message(
