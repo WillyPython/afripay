@@ -1,4 +1,4 @@
-import secrets
+ import secrets
 import urllib.parse
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -425,9 +425,15 @@ def init_navigation_state() -> None:
         st.session_state["main_menu"] = "Connexion"
 
 
-def set_menu(menu_name: str) -> None:
+def schedule_menu_redirect(menu_name: str) -> None:
     if menu_name in MENU_OPTIONS:
-        st.session_state["main_menu"] = menu_name
+        st.session_state["pending_main_menu"] = menu_name
+
+
+def apply_pending_menu_redirect() -> None:
+    pending_menu = st.session_state.pop("pending_main_menu", None)
+    if pending_menu in MENU_OPTIONS:
+        st.session_state["main_menu"] = pending_menu
 
 
 def consume_flash_message() -> None:
@@ -511,7 +517,7 @@ def render_sidebar() -> str:
             save_session_token_in_query_params(None)
             clear_login_test_otp()
             logout_user()
-            set_menu("Connexion")
+            schedule_menu_redirect("Connexion")
             st.rerun()
     else:
         st.sidebar.info("Non connecté")
@@ -634,7 +640,7 @@ def page_connexion() -> None:
         clear_login_test_otp()
 
         st.session_state["flash_message"] = "Connexion réussie ✅"
-        set_menu("Dashboard Client")
+        schedule_menu_redirect("Dashboard Client")
         st.rerun()
 
 
@@ -1183,6 +1189,7 @@ def main() -> None:
     init_session()
     init_navigation_state()
     restore_session_from_query_params()
+    apply_pending_menu_redirect()
 
     menu = render_sidebar()
 
