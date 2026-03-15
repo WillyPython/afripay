@@ -457,37 +457,42 @@ def render_test_otp_panel(current_phone: str = "") -> None:
             "Utilise le même numéro ou demande un nouvel OTP."
         )
 
-    st.markdown("### OTP de test actif")
+    st.markdown("## 🔐 MODE TEST AFRIPAY")
     st.warning(
-        "Mode TEST : cet OTP est affiché à l’écran pour les essais privés. "
+        "Ce code OTP est visible à l’écran uniquement pour le test privé. "
         "Il n’est pas encore envoyé par SMS ni par WhatsApp."
     )
+
     st.markdown(
         f"""
 <div style="
-    border: 2px solid #16a34a;
-    border-radius: 12px;
-    padding: 18px;
-    margin: 10px 0 16px 0;
-    background-color: rgba(22, 163, 74, 0.08);
+    border: 3px solid #16a34a;
+    border-radius: 16px;
+    padding: 22px;
+    margin: 12px 0 18px 0;
+    background-color: rgba(22, 163, 74, 0.10);
     text-align: center;
 ">
-    <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">
+    <div style="font-size: 18px; font-weight: 800; margin-bottom: 12px;">
+        NUMÉRO DE TÉLÉPHONE LIÉ
+    </div>
+    <div style="font-size: 28px; font-weight: 900; margin-bottom: 18px;">
+        {otp_phone or "—"}
+    </div>
+    <div style="font-size: 18px; font-weight: 800; margin-bottom: 10px;">
         CODE OTP DE TEST
     </div>
-    <div style="font-size: 38px; font-weight: 900; letter-spacing: 8px;">
+    <div style="font-size: 46px; font-weight: 900; letter-spacing: 10px; line-height: 1.2;">
         {otp_code}
-    </div>
-    <div style="margin-top: 10px; font-size: 14px;">
-        Téléphone lié : <strong>{otp_phone or "—"}</strong>
     </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
+
     st.info(
-        "Tant que tu ne demandes pas un nouvel OTP ou que tu ne te connectes pas avec succès, "
-        "ce code reste visible ici à l’écran."
+        "Conserve ce code et ce numéro tels qu’affichés ci-dessus. "
+        "Ils resteront visibles tant qu’un nouvel OTP n’est pas demandé ou que la connexion n’est pas validée."
     )
 
 
@@ -536,7 +541,7 @@ def page_connexion() -> None:
 
     st.info(
         "Connexion privée de test AfriPay. "
-        "Pour le moment, le code OTP est affiché directement à l’écran."
+        "Après connexion, vous serez redirigé vers « Créer commande » pour commencer votre opération."
     )
 
     default_phone = str(st.session_state.get("otp_phone", "") or "")
@@ -637,7 +642,7 @@ def page_connexion() -> None:
         clear_login_test_otp()
 
         st.session_state["flash_message"] = "Connexion réussie ✅"
-        schedule_menu_redirect("Dashboard Client")
+        schedule_menu_redirect("Créer commande")
         st.rerun()
 
 
@@ -863,10 +868,16 @@ def page_simuler() -> None:
 
 def page_creer_commande() -> None:
     st.title("Créer commande")
+    consume_flash_message()
 
     if not st.session_state.get("logged_in"):
         st.warning("Tu dois être connecté.")
         return
+
+    st.info(
+        "📌 Étape principale après connexion : crée d’abord ta commande. "
+        "Tu pourras ensuite vérifier le résultat dans « Mes commandes » puis dans le Dashboard Client."
+    )
 
     st.info(
         "📌 AfriPay facilite le paiement international. "
@@ -1047,7 +1058,7 @@ def page_creer_commande() -> None:
         st.success(f"Commande créée ✅ Numéro : **{order_code}**")
         st.info(
             "Votre commande a bien été enregistrée. "
-            "Vous pourrez suivre son évolution dans « Mes commandes » et « Suivre commande »."
+            "Vous pouvez maintenant vérifier le résultat dans « Mes commandes » puis dans le Dashboard Client."
         )
 
         st.success(
@@ -1079,6 +1090,7 @@ def page_creer_commande() -> None:
 
 def page_mes_commandes() -> None:
     st.title("Mes commandes")
+    consume_flash_message()
 
     if not st.session_state.get("logged_in"):
         st.warning("Tu dois être connecté.")
