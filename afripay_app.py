@@ -1,7 +1,7 @@
 import secrets
 import urllib.parse
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import streamlit as st
 
@@ -37,6 +37,11 @@ from ui.branding import render_sidebar_branding
 AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 AFRIPAY_PERCENT_FEE = 0.20
+
+# OTP anti-spam
+OTP_COOLDOWN_SECONDS = 60
+OTP_MAX_REQUESTS = 3
+OTP_WINDOW_MINUTES = 5
 
 LANG_FR = "FR"
 LANG_EN = "EN"
@@ -109,6 +114,9 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "otp_linked_phone": "NUMÉRO DE TÉLÉPHONE LIÉ",
         "otp_test_code": "CODE OTP DE TEST",
         "otp_keep_info": "Conserve ce code et ce numéro tels qu’affichés ci-dessus. Ils resteront visibles tant qu’un nouvel OTP n’est pas demandé ou que la connexion n’est pas validée.",
+        "otp_wait_before_retry": "Veuillez attendre encore {seconds} seconde(s) avant de demander un nouveau code OTP.",
+        "otp_too_many_requests": "Trop de demandes OTP pour ce numéro. Réessayez dans {minutes} minute(s).",
+        "otp_limit_info": "Protection OTP : 1 code toutes les 60 secondes, maximum 3 codes sur 5 minutes.",
         "captcha_title": "Vérification humaine",
         "captcha_required": "Captcha obligatoire : vous devez saisir le résultat exact pour continuer.",
         "captcha_info": "Protection anti-bot AfriPay : veuillez résoudre l'opération suivante avant de continuer : **{a} + {b} = ?**",
@@ -351,6 +359,9 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "otp_linked_phone": "LINKED PHONE NUMBER",
         "otp_test_code": "TEST OTP CODE",
         "otp_keep_info": "Keep this code and phone number exactly as shown above. They remain visible until a new OTP is requested or the login is validated.",
+        "otp_wait_before_retry": "Please wait {seconds} more second(s) before requesting a new OTP code.",
+        "otp_too_many_requests": "Too many OTP requests for this phone number. Please try again in {minutes} minute(s).",
+        "otp_limit_info": "OTP protection: 1 code every 60 seconds, maximum 3 codes within 5 minutes.",
         "captcha_title": "Human verification",
         "captcha_required": "Required captcha: you must enter the exact result to continue.",
         "captcha_info": "AfriPay anti-bot protection: please solve the following operation before continuing: **{a} + {b} = ?**",
@@ -1109,6 +1120,95 @@ def clear_login_test_otp() -> None:
     st.session_state.pop("otp_phone", None)
 
 
+def init_otp_rate_limit_state() -> None:
+    if "otp_request_log" not in st.session_state:
+        st.session_state["otp_request_log"] = {}
+
+
+def get_now_utc() -> datetime:
+    return datetime.utcnow()
+
+
+def get_phone_otp_requests(phone: str):
+    init_otp_rate_limit_state()
+
+    clean_phone = str(phone or "").strip()
+    if not clean_phone:
+        return []
+
+    raw_requests = st.session_state["otp_request_log"].get(clean_phone, [])
+    now = get_now_utc()
+    window_start = now - timedelta(minutes=OTP_WINDOW_MINUTES)
+
+    valid_requests = []
+    for item in raw_requests:
+        if isinstance(item, datetime) and item >= window_start:
+            valid_requests.append(item)
+
+    st.session_state["otp_request_log"][clean_phone] = valid_requests
+    return valid_requests
+
+
+def record_otp_request(phone: str) -> None:
+    init_otp_rate_limit_state()
+
+    clean_phone = str(phone or "").strip()
+    if not clean_phone:
+        return
+
+    requests = get_phone_otp_requests(clean_phone)
+    requests.append(get_now_utc())
+    st.session_state["otp_request_log"][clean_phone] = requests
+
+
+def get_otp_rate_limit_status(phone: str) -> dict:
+    clean_phone = str(phone or "").strip()
+    if not clean_phone:
+        return {
+            "allowed": True,
+            "reason": "",
+            "wait_seconds": 0,
+            "wait_minutes": 0,
+        }
+
+    requests = get_phone_otp_requests(clean_phone)
+    now = get_now_utc()
+
+    if requests:
+        last_request = requests[-1]
+        cooldown_end = last_request + timedelta(seconds=OTP_COOLDOWN_SECONDS)
+
+        if now < cooldown_end:
+            remaining_seconds = int((cooldown_end - now).total_seconds()) + 1
+            return {
+                "allowed": False,
+                "reason": "cooldown",
+                "wait_seconds": remaining_seconds,
+                "wait_minutes": 0,
+            }
+
+    if len(requests) >= OTP_MAX_REQUESTS:
+        oldest_relevant_request = requests[0]
+        retry_at = oldest_relevant_request + timedelta(minutes=OTP_WINDOW_MINUTES)
+
+        if now < retry_at:
+            remaining_seconds = int((retry_at - now).total_seconds()) + 1
+            remaining_minutes = max(1, (remaining_seconds + 59) // 60)
+            return {
+                "allowed": False,
+                "reason": "window_limit",
+                "wait_seconds": remaining_seconds,
+                "wait_minutes": remaining_minutes,
+            }
+
+    return {
+        "allowed": True,
+        "reason": "",
+        "wait_seconds": 0,
+        "wait_minutes": 0,
+    }
+
+
 def render_sidebar() -> str:
     render_sidebar_branding()
 
@@ -1168,6 +1268,7 @@ def page_connexion() -> None:
     phone = st.text_input(t("phone"), value=default_phone, placeholder="+2376...")
 
     render_test_otp_panel(current_phone=phone)
+    st.caption(t("otp_limit_info"))
 
     captcha_input = render_captcha_block("login", title=t("captcha_title"), allow_refresh=True)
 
@@ -1193,9 +1294,33 @@ def page_connexion() -> None:
 
         clear_captcha_error("login")
 
+        otp_limit_status = get_otp_rate_limit_status(clean_phone)
+
+        if not otp_limit_status["allowed"]:
+            if otp_limit_status["reason"] == "cooldown":
+                st.error(
+                    t(
+                        "otp_wait_before_retry",
+                        seconds=otp_limit_status["wait_seconds"],
+                    )
+                )
+                return
+
+            if otp_limit_status["reason"] == "window_limit":
+                st.error(
+                    t(
+                        "otp_too_many_requests",
+                        minutes=otp_limit_status["wait_minutes"],
+                    )
+                )
+                return
+
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
         st.session_state["otp_phone"] = clean_phone
+
+        record_otp_request(clean_phone)
+
         st.success(t("otp_success"))
         st.rerun()
 
@@ -1823,6 +1948,7 @@ def main() -> None:
     init_session()
     init_language_state()
     init_navigation_state()
+    init_otp_rate_limit_state()
     restore_session_from_query_params()
     apply_pending_menu_redirect()
 
