@@ -1,3 +1,4 @@
+import os
 import secrets
 import urllib.parse
 from collections import Counter, defaultdict
@@ -38,8 +39,9 @@ AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 AFRIPAY_PERCENT_FEE = 0.20
 
-# Numéro WhatsApp Business AfriPay (format international sans + ni espaces)
-AFRIPAY_WHATSAPP_NUMBER = "316XXXXXXXX"
+# WhatsApp numbers from Render environment variables
+WHATSAPP_DEFAULT = os.getenv("WHATSAPP_DEFAULT", "31620361841")
+WHATSAPP_CM = os.getenv("WHATSAPP_CM", WHATSAPP_DEFAULT)
 
 # OTP anti-spam
 OTP_COOLDOWN_SECONDS = 60
@@ -612,6 +614,12 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "dec": "Dec",
     },
 }
+
+
+def get_whatsapp_number(country="CM"):
+    if str(country or "").upper() == "CM":
+        return WHATSAPP_CM
+    return WHATSAPP_DEFAULT
 
 
 def init_language_state() -> None:
@@ -1957,7 +1965,7 @@ def page_creer_commande() -> None:
             momo_provider=momo_provider.strip() or "MTN MoMo / Orange Money",
         )
         payment_proof_url = build_whatsapp_direct_url(
-            AFRIPAY_WHATSAPP_NUMBER,
+            get_whatsapp_number("CM"),
             payment_proof_message,
         )
 
