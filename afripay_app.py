@@ -38,6 +38,9 @@ AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 AFRIPAY_PERCENT_FEE = 0.20
 
+# Numéro WhatsApp Business AfriPay (format international sans + ni espaces)
+AFRIPAY_WHATSAPP_NUMBER = "316XXXXXXXX"
+
 # OTP anti-spam
 OTP_COOLDOWN_SECONDS = 60
 OTP_MAX_REQUESTS = 3
@@ -253,6 +256,17 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "share_order_title": "### 📲 Partager votre commande",
         "share_whatsapp": "Partager AfriPay sur WhatsApp",
         "see_whatsapp_message": "Voir le message WhatsApp",
+        "payment_proof_title": "### 💳 Envoyer votre preuve de paiement",
+        "send_payment_proof_whatsapp": "📲 Envoyer preuve de paiement WhatsApp",
+        "see_payment_proof_message": "Voir le message de preuve de paiement",
+        "payment_proof_help": "Après paiement Mobile Money, cliquez sur ce bouton pour ouvrir WhatsApp avec un message déjà préparé. Ajoutez ensuite votre capture d’écran avant l’envoi.",
+        "payment_proof_message_intro": "Bonjour AfriPay,",
+        "payment_proof_message_confirm": "Je confirme le paiement de ma commande.",
+        "payment_proof_message_reference": "Référence : {order_code}",
+        "payment_proof_message_amount": "Montant payé : {amount_xaf} XAF",
+        "payment_proof_message_operator": "Opérateur : {provider}",
+        "payment_proof_message_screenshot": "Vous trouverez ci-joint la capture d’écran du paiement.",
+        "payment_proof_message_thanks": "Merci.",
         "my_orders_title": "Mes commandes",
         "need_login_my_orders": "Tu dois être connecté.",
         "no_orders_short": "Aucune commande.",
@@ -498,6 +512,17 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "share_order_title": "### 📲 Share your order",
         "share_whatsapp": "Share AfriPay on WhatsApp",
         "see_whatsapp_message": "View WhatsApp message",
+        "payment_proof_title": "### 💳 Send your payment proof",
+        "send_payment_proof_whatsapp": "📲 Send payment proof via WhatsApp",
+        "see_payment_proof_message": "View payment proof message",
+        "payment_proof_help": "After Mobile Money payment, click this button to open WhatsApp with a prefilled message. Then add your payment screenshot before sending.",
+        "payment_proof_message_intro": "Hello AfriPay,",
+        "payment_proof_message_confirm": "I confirm the payment of my order.",
+        "payment_proof_message_reference": "Reference: {order_code}",
+        "payment_proof_message_amount": "Amount paid: {amount_xaf} XAF",
+        "payment_proof_message_operator": "Operator: {provider}",
+        "payment_proof_message_screenshot": "Please find attached the payment screenshot.",
+        "payment_proof_message_thanks": "Thank you.",
         "my_orders_title": "My orders",
         "need_login_my_orders": "You must be logged in.",
         "no_orders_short": "No orders.",
@@ -929,9 +954,35 @@ def build_whatsapp_order_message(
     return "\n".join(lines)
 
 
+def build_payment_proof_whatsapp_message(order_code, amount_xaf, momo_provider):
+    provider = str(momo_provider or "").strip()
+    if not provider:
+        provider = "MTN MoMo / Orange Money"
+
+    lines = [
+        t("payment_proof_message_intro"),
+        "",
+        t("payment_proof_message_confirm"),
+        "",
+        t("payment_proof_message_reference", order_code=order_code),
+        t("payment_proof_message_amount", amount_xaf=format_xaf(amount_xaf)),
+        t("payment_proof_message_operator", provider=provider),
+        "",
+        t("payment_proof_message_screenshot"),
+        t("payment_proof_message_thanks"),
+    ]
+    return "\n".join(lines)
+
+
 def build_whatsapp_share_url(message: str) -> str:
     encoded_message = urllib.parse.quote(message)
     return f"https://wa.me/?text={encoded_message}"
+
+
+def build_whatsapp_direct_url(phone_number: str, message: str) -> str:
+    clean_phone = "".join(ch for ch in str(phone_number or "") if ch.isdigit())
+    encoded_message = urllib.parse.quote(message)
+    return f"https://wa.me/{clean_phone}?text={encoded_message}"
 
 
 def refresh_captcha(prefix: str) -> None:
@@ -1835,6 +1886,27 @@ def page_creer_commande() -> None:
 
         with st.expander(t("see_whatsapp_message")):
             st.code(whatsapp_message)
+
+        payment_proof_message = build_payment_proof_whatsapp_message(
+            order_code=order_code,
+            amount_xaf=final_preview["total_to_pay_xaf"],
+            momo_provider=momo_provider.strip() or "MTN MoMo / Orange Money",
+        )
+        payment_proof_url = build_whatsapp_direct_url(
+            AFRIPAY_WHATSAPP_NUMBER,
+            payment_proof_message,
+        )
+
+        st.markdown(t("payment_proof_title"))
+        st.info(t("payment_proof_help"))
+        st.link_button(
+            t("send_payment_proof_whatsapp"),
+            payment_proof_url,
+            use_container_width=True,
+        )
+
+        with st.expander(t("see_payment_proof_message")):
+            st.code(payment_proof_message)
 
         clear_captcha_error("order")
         refresh_captcha("order")
