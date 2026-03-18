@@ -197,6 +197,7 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "merchant_amount": "Montant marchand",
         "afripay_fee": "Frais AfriPay",
         "total_to_pay": "Total à payer",
+        "total_paid": "Total payé",
         "pricing_info": "Tarification AfriPay v1 : {percent} % du montant marchand, sans frais fixe",
         "create_order_title": "Créer commande",
         "need_login_create_order": "Tu dois être connecté.",
@@ -267,6 +268,16 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "payment_proof_message_operator": "Opérateur : {provider}",
         "payment_proof_message_screenshot": "Vous trouverez ci-joint la capture d’écran du paiement.",
         "payment_proof_message_thanks": "Merci.",
+        "referral_title": "### 🎁 Inviter un proche sur WhatsApp",
+        "referral_button": "📲 Inviter un proche sur WhatsApp",
+        "referral_help": "Partagez AfriPay à un proche, ami, collègue ou commerçant directement sur WhatsApp.",
+        "see_referral_message": "Voir le message de parrainage",
+        "referral_hello": "Bonjour 👋",
+        "referral_intro": "Je te partage AfriPay Afrika.",
+        "referral_body_1": "La plateforme permet de payer certains achats et services internationaux depuis l’Afrique avec Mobile Money.",
+        "referral_examples_title": "Exemples :",
+        "referral_examples": "Amazon, Temu, certifications, universités, logiciels, abonnements",
+        "referral_cta": "Tu peux découvrir ici :",
         "my_orders_title": "Mes commandes",
         "need_login_my_orders": "Tu dois être connecté.",
         "no_orders_short": "Aucune commande.",
@@ -275,6 +286,8 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "amount_xaf_label": "Montant XAF",
         "amount_eur_label": "Montant EUR",
         "seller_fee_label": "Frais vendeur",
+        "merchant_amount_label": "Montant marchand",
+        "total_paid_label": "Total payé",
         "forwarder_address_expander": "Adresse agence / transitaire",
         "payment_label": "Paiement",
         "status_label": "Statut",
@@ -453,6 +466,7 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "merchant_amount": "Merchant amount",
         "afripay_fee": "AfriPay fee",
         "total_to_pay": "Total to pay",
+        "total_paid": "Total paid",
         "pricing_info": "AfriPay v1 pricing: {percent}% of the merchant amount, no fixed fee",
         "create_order_title": "Create order",
         "need_login_create_order": "You must be logged in.",
@@ -523,6 +537,16 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "payment_proof_message_operator": "Operator: {provider}",
         "payment_proof_message_screenshot": "Please find attached the payment screenshot.",
         "payment_proof_message_thanks": "Thank you.",
+        "referral_title": "### 🎁 Invite someone on WhatsApp",
+        "referral_button": "📲 Invite someone on WhatsApp",
+        "referral_help": "Share AfriPay with a friend, relative, colleague or merchant directly on WhatsApp.",
+        "see_referral_message": "View referral message",
+        "referral_hello": "Hello 👋",
+        "referral_intro": "I’m sharing AfriPay Afrika with you.",
+        "referral_body_1": "The platform helps people pay for some international purchases and services from Africa using Mobile Money.",
+        "referral_examples_title": "Examples:",
+        "referral_examples": "Amazon, Temu, certifications, universities, software, subscriptions",
+        "referral_cta": "You can check it here:",
         "my_orders_title": "My orders",
         "need_login_my_orders": "You must be logged in.",
         "no_orders_short": "No orders.",
@@ -531,6 +555,8 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "amount_xaf_label": "Amount XAF",
         "amount_eur_label": "Amount EUR",
         "seller_fee_label": "Seller fee",
+        "merchant_amount_label": "Merchant amount",
+        "total_paid_label": "Total paid",
         "forwarder_address_expander": "Agency / forwarder address",
         "payment_label": "Payment",
         "status_label": "Status",
@@ -970,6 +996,26 @@ def build_payment_proof_whatsapp_message(order_code, amount_xaf, momo_provider):
         "",
         t("payment_proof_message_screenshot"),
         t("payment_proof_message_thanks"),
+    ]
+    return "\n".join(lines)
+
+
+def build_referral_whatsapp_message():
+    lines = [
+        t("referral_hello"),
+        "",
+        t("referral_intro"),
+        "",
+        t("referral_body_1"),
+        "",
+        t("referral_examples_title"),
+        t("referral_examples"),
+        "",
+        t("referral_cta"),
+        AFRIPAY_PUBLIC_URL,
+        "",
+        t("whatsapp_brand"),
+        t("whatsapp_tagline"),
     ]
     return "\n".join(lines)
 
@@ -1543,6 +1589,10 @@ def page_dashboard_client() -> None:
 
     latest = rows[0]
 
+    merchant_total_amount = to_float(safe_get(latest, "merchant_total_amount", 0), 0.0)
+    merchant_currency = safe_get(latest, "merchant_currency", "XAF")
+    merchant_xaf, merchant_eur = compute_dual_amounts(merchant_total_amount, merchant_currency)
+
     st.subheader(t("latest_order"))
     info1, info2 = st.columns(2)
 
@@ -1550,10 +1600,12 @@ def page_dashboard_client() -> None:
         st.write(f"**{t('reference')} :** {safe_get(latest, 'order_code', '—')}")
         st.write(f"**{t('product_service')} :** {get_product_label(latest)}")
         st.write(f"**{t('merchant')} :** {safe_get(latest, 'site_name', '—')}")
-        st.write(f"**{t('total_xaf')} :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
-        st.write(f"**{t('total_eur')} :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
+        st.write(f"**{t('merchant_amount')} :** {format_xaf(merchant_xaf)} XAF ({format_eur(merchant_eur)} €)")
+        st.write(f"**{t('afripay_fee')} :** {format_xaf(safe_get(latest, 'afripay_fee_xaf', 0))} XAF")
+        st.write(f"**{t('total_paid')} :** {format_xaf(safe_get(latest, 'total_xaf', 0))} XAF")
 
     with info2:
+        st.write(f"**{t('total_eur')} :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
         st.write(f"**{t('order_status')} :** {normalize_status(safe_get(latest, 'order_status', '—'))}")
         st.write(f"**{t('payment_status')} :** {safe_get(latest, 'payment_status', '—')}")
         st.write(f"**{t('forwarder_address')} :** {safe_get(latest, 'delivery_address', '—')}")
@@ -1603,10 +1655,16 @@ def page_tracking() -> None:
             st.error(t("order_not_found"))
             return
 
+        merchant_total_amount = to_float(safe_get(row, "merchant_total_amount", 0), 0.0)
+        merchant_currency = safe_get(row, "merchant_currency", "XAF")
+        merchant_xaf, merchant_eur = compute_dual_amounts(merchant_total_amount, merchant_currency)
+
         st.success(f"{t('order_number')} : **{safe_get(row, 'order_code', '')}**")
         st.write(f"**{t('product_service')} :**", get_product_label(row))
         st.write(f"**{t('merchant')} :**", safe_get(row, "site_name", "—"))
-        st.write(f"**{t('total_xaf')} :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
+        st.write(f"**{t('merchant_amount')} :**", f"{format_xaf(merchant_xaf)} XAF ({format_eur(merchant_eur)} €)")
+        st.write(f"**{t('afripay_fee')} :**", f"{format_xaf(safe_get(row, 'afripay_fee_xaf', 0))} XAF")
+        st.write(f"**{t('total_paid')} :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
         st.write(f"**{t('total_eur')} :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
         st.write(f"**{t('order_status')} :**", normalize_status(safe_get(row, "order_status", "—")))
         st.write(f"**{t('payment_status')} :**", safe_get(row, "payment_status", "—"))
@@ -1914,6 +1972,20 @@ def page_creer_commande() -> None:
         with st.expander(t("see_payment_proof_message")):
             st.code(payment_proof_message)
 
+        referral_message = build_referral_whatsapp_message()
+        referral_url = build_whatsapp_share_url(referral_message)
+
+        st.markdown(t("referral_title"))
+        st.info(t("referral_help"))
+        st.link_button(
+            t("referral_button"),
+            referral_url,
+            use_container_width=True,
+        )
+
+        with st.expander(t("see_referral_message")):
+            st.code(referral_message)
+
         clear_captcha_error("order")
         refresh_captcha("order")
 
@@ -1935,19 +2007,22 @@ def page_mes_commandes() -> None:
     for row in rows:
         code = safe_get(row, "order_code", f"#{safe_get(row, 'id', '')}")
         total = safe_get(row, "total_xaf", 0)
-        total_eur = safe_get(row, "total_to_pay_eur", 0)
         status = safe_get(row, "order_status", "—")
 
         expander_title = f"{code} — {normalize_status(status)} — {format_xaf(total)} XAF"
+
+        merchant_total_amount = to_float(safe_get(row, "merchant_total_amount", 0), 0.0)
+        merchant_currency = safe_get(row, "merchant_currency", "XAF")
+        merchant_xaf, merchant_eur = compute_dual_amounts(merchant_total_amount, merchant_currency)
 
         with st.expander(expander_title):
             st.write(f"**{t('created_on')} :** {safe_get(row, 'created_at', '—')}")
             st.write(f"**{t('product_service')} :** {get_product_label(row)}")
             st.write(f"**{t('merchant_org_label')} :** {safe_get(row, 'site_name', '—')}")
-            st.write(f"**{t('amount_xaf_label')} :** {format_xaf(total)} XAF")
-            st.write(f"**{t('amount_eur_label')} :** {format_eur(total_eur)} €")
-            st.write(f"**{t('seller_fee_label')} :** {format_xaf(safe_get(row, 'seller_fee_xaf', 0))} XAF")
+            st.write(f"**{t('merchant_amount_label')} :** {format_xaf(merchant_xaf)} XAF ({format_eur(merchant_eur)} €)")
             st.write(f"**{t('afripay_fee')} :** {format_xaf(safe_get(row, 'afripay_fee_xaf', 0))} XAF")
+            st.write(f"**{t('total_paid_label')} :** {format_xaf(safe_get(row, 'total_xaf', 0))} XAF ({format_eur(safe_get(row, 'total_to_pay_eur', 0))} €)")
+            st.write(f"**{t('seller_fee_label')} :** {format_xaf(safe_get(row, 'seller_fee_xaf', 0))} XAF")
             st.write(f"**{t('forwarder_address_expander')} :** {safe_get(row, 'delivery_address', '—')}")
             st.write(f"**{t('payment_label')} :** {safe_get(row, 'payment_status', '—')}")
             st.write(f"**{t('status_label')} :** {normalize_status(status)}")
