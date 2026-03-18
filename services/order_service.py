@@ -100,6 +100,13 @@ def _to_float(value, default=0.0):
         return float(default)
 
 
+def _to_int(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return int(default)
+
+
 def _clean_text(value, default=""):
     if value is None:
         return default
@@ -177,7 +184,10 @@ def build_promoter_whatsapp_message(order):
     customer_name = _clean_text(order.get("user_name"), "Cher client")
     order_code = _clean_text(order.get("order_code"), "-")
     site_name = _clean_text(order.get("site_name"), "votre marchand")
-    product_title = _clean_text(order.get("product_title") or order.get("product_name"), "votre commande")
+    product_title = _clean_text(
+        order.get("product_title") or order.get("product_name"),
+        "votre commande",
+    )
 
     return (
         f"Bonjour {customer_name},\n\n"
@@ -203,18 +213,22 @@ def xaf_to_eur(value_xaf):
     return value_xaf / rate if rate else 0.0
 
 
-def calculate_order_amounts(product_price_eur, shipping_estimate_eur):
+def calculate_order_amounts(
+    product_price_eur,
+    shipping_estimate_eur,
+    seller_fee_xaf=DEFAULT_SELLER_FEE_XAF,
+    afripay_fee_xaf=DEFAULT_AFRIPAY_FEE_XAF,
+):
     """
     Calcule tous les montants cohérents de la commande.
     """
     product_price_eur = _to_float(product_price_eur, 0.0)
     shipping_estimate_eur = _to_float(shipping_estimate_eur, 0.0)
+    seller_fee_xaf = _round_xaf(seller_fee_xaf)
+    afripay_fee_xaf = _round_xaf(afripay_fee_xaf)
 
     total_eur = product_price_eur + shipping_estimate_eur
     rate = get_eur_xaf_rate()
-
-    seller_fee_xaf = DEFAULT_SELLER_FEE_XAF
-    afripay_fee_xaf = DEFAULT_AFRIPAY_FEE_XAF
 
     merchant_total_xaf = _round_xaf(total_eur * rate)
     total_xaf = _round_xaf(merchant_total_xaf + seller_fee_xaf + afripay_fee_xaf)
@@ -247,16 +261,15 @@ def create_order_for_user(
     merchant_total_amount=None,
     merchant_currency=None,
     country_code="CM",
+    seller_fee_xaf=None,
+    afripay_fee_xaf=None,
+    total_xaf=None,
+    total_to_pay_eur=None,
 ):
     conn = get_conn()
     cur = conn.cursor()
 
     order_code = generate_order_code()
-
-    amounts = calculate_order_amounts(
-        product_price_eur=product_price_eur,
-        shipping_estimate_eur=shipping_estimate_eur,
-    )
 
     clean_site_name = _clean_text(site_name)
     clean_product_url = _clean_text(product_url)
@@ -266,11 +279,53 @@ def create_order_for_user(
     clean_momo_provider = _clean_optional_text(momo_provider)
     clean_country_code = _clean_text(country_code or "CM", "CM").upper()
 
-    if merchant_total_amount is None:
-        merchant_total_amount = amounts["total_to_pay_eur"]
-
-    clean_merchant_total_amount = _to_float(merchant_total_amount, 0.0)
     clean_merchant_currency = _clean_text(merchant_currency or "EUR", "EUR").upper()
+
+    base_amounts = calculate_order_amounts(
+        product_price_eur=product_price_eur,
+        shipping_estimate_eur=shipping_estimate_eur,
+        seller_fee_xaf=seller_fee_xaf if seller_fee_xaf is not None else DEFAULT_SELLER_FEE_XAF,
+        afripay_fee_xaf=afripay_fee_xaf if afripay_fee_xaf is not None else DEFAULT_AFRIPAY_FEE_XAF,
+    )
+
+    final_seller_fee_xaf = (
+        _round_xaf(seller_fee_xaf)
+        if seller_fee_xaf is not None
+        else base_amounts["seller_fee_xaf"]
+    )
+
+    final_afripay_fee_xaf = (
+        _round_xaf(afripay_fee_xaf)
+        if afripay_fee_xaf is not None
+        else base_amounts["afripay_fee_xaf"]
+    )
+
+    final_total_to_pay_eur = (
+        _to_float(total_to_pay_eur, base_amounts["total_to_pay_eur"])
+        if total_to_pay_eur is not None
+        else base_amounts["total_to_pay_eur"]
+    )
+
+    final_total_xaf = (
+        _round_xaf(total_xaf)
+        if total_xaf is not None
+        else _round_xaf(
+            base_amounts["merchant_total_xaf"]
+            + final_seller_fee_xaf
+            + final_afripay_fee_xaf
+        )
+    )
+
+    if merchant_total_amount is None:
+        if clean_merchant_currency == "XAF":
+            inferred_merchant_total_amount = base_amounts["merchant_total_xaf"]
+        else:
+            inferred_merchant_total_amount = _to_float(product_price_eur, 0.0) + _to_float(
+                shipping_estimate_eur, 0.0
+            )
+        clean_merchant_total_amount = _to_float(inferred_merchant_total_amount, 0.0)
+    else:
+        clean_merchant_total_amount = _to_float(merchant_total_amount, 0.0)
 
     cur.execute(
         """
@@ -300,10 +355,7 @@ def create_order_for_user(
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s,
-            %s,
-            NOW(),
-            NOW()
+            %s, %s, NOW(), NOW()
         )
         RETURNING order_code
         """,
@@ -316,12 +368,12 @@ def create_order_for_user(
             clean_product_title,
             clean_product_specs,
             clean_product_url,
-            amounts["product_price_eur"],
-            amounts["shipping_estimate_eur"],
-            amounts["total_to_pay_eur"],
-            amounts["seller_fee_xaf"],
-            amounts["afripay_fee_xaf"],
-            amounts["total_xaf"],
+            _to_float(product_price_eur, 0.0),
+            _to_float(shipping_estimate_eur, 0.0),
+            final_total_to_pay_eur,
+            final_seller_fee_xaf,
+            final_afripay_fee_xaf,
+            final_total_xaf,
             clean_delivery_address,
             clean_momo_provider,
             clean_merchant_total_amount,
