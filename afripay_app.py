@@ -26,6 +26,8 @@ from services.order_service import (
     create_order_for_user,
     list_orders_for_user,
     get_order_by_code,
+    get_payment_status_label,
+    mark_payment_proof_sent,
 )
 from services.admin_service import (
     admin_is_configured,
@@ -261,6 +263,9 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "see_whatsapp_message": "Voir le message WhatsApp",
         "payment_proof_title": "### 💳 Envoyer votre preuve de paiement",
         "send_payment_proof_whatsapp": "📲 Envoyer preuve de paiement WhatsApp",
+        "prepare_payment_proof": "📲 J'ai préparé ma preuve de paiement",
+        "payment_proof_status_updated": "Statut mis à jour : preuve de paiement initiée.",
+        "payment_proof_status_already": "Le statut de paiement a déjà été mis à jour pour cette commande.",
         "see_payment_proof_message": "Voir le message de preuve de paiement",
         "payment_proof_help": "Après paiement Mobile Money, cliquez sur ce bouton pour ouvrir WhatsApp avec un message déjà préparé. Ajoutez ensuite votre capture d’écran avant l’envoi.",
         "payment_proof_message_intro": "Bonjour AfriPay,",
@@ -530,6 +535,9 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "see_whatsapp_message": "View WhatsApp message",
         "payment_proof_title": "### 💳 Send your payment proof",
         "send_payment_proof_whatsapp": "📲 Send payment proof via WhatsApp",
+        "prepare_payment_proof": "📲 I have prepared my payment proof",
+        "payment_proof_status_updated": "Status updated: payment proof initiated.",
+        "payment_proof_status_already": "The payment status has already been updated for this order.",
         "see_payment_proof_message": "View payment proof message",
         "payment_proof_help": "After Mobile Money payment, click this button to open WhatsApp with a prefilled message. Then add your payment screenshot before sending.",
         "payment_proof_message_intro": "Hello AfriPay,",
@@ -739,6 +747,10 @@ def normalize_status(status):
     return STATUS_LABELS_FR.get(status, str(status or "—"))
 
 
+def normalize_payment_status(status):
+    return get_payment_status_label(status)
+
+
 def month_label(dt):
     months = [
         t("jan"),
@@ -783,6 +795,7 @@ def build_timeline_steps(order):
     order_status = str(safe_get(order, "order_status", "")).strip().upper()
     payment_status = str(safe_get(order, "payment_status", "")).strip().upper()
     merchant_status = safe_get(order, "merchant_status", "")
+    payment_status_label = normalize_payment_status(payment_status)
 
     merchant_step = merchant_status_to_step(merchant_status)
 
@@ -794,8 +807,8 @@ def build_timeline_steps(order):
         },
         {
             "title": t("step_payment_confirmed"),
-            "done": payment_status in {"PAYE", "PAYÉ", "PAYEE", "PAYÉE", "CONFIRMED"},
-            "detail": t("step_payment_status", status=safe_get(order, "payment_status", "—")),
+            "done": payment_status in {"CONFIRMED", "PAYE", "PAYÉ", "PAYEE", "PAYÉE"},
+            "detail": t("step_payment_status", status=payment_status_label),
         },
         {
             "title": t("step_merchant_order"),
@@ -1003,6 +1016,7 @@ def build_payment_proof_whatsapp_message(order_code, amount_xaf, momo_provider):
         t("payment_proof_message_operator", provider=provider),
         "",
         t("payment_proof_message_screenshot"),
+        "",
         t("payment_proof_message_thanks"),
     ]
     return "\n".join(lines)
@@ -1615,7 +1629,7 @@ def page_dashboard_client() -> None:
     with info2:
         st.write(f"**{t('total_eur')} :** {format_eur(safe_get(latest, 'total_to_pay_eur', 0))} €")
         st.write(f"**{t('order_status')} :** {normalize_status(safe_get(latest, 'order_status', '—'))}")
-        st.write(f"**{t('payment_status')} :** {safe_get(latest, 'payment_status', '—')}")
+        st.write(f"**{t('payment_status')} :** {normalize_payment_status(safe_get(latest, 'payment_status', '—'))}")
         st.write(f"**{t('forwarder_address')} :** {safe_get(latest, 'delivery_address', '—')}")
 
     render_logistics_timeline(latest)
@@ -1675,7 +1689,7 @@ def page_tracking() -> None:
         st.write(f"**{t('total_paid')} :**", f"{format_xaf(safe_get(row, 'total_xaf', 0))} XAF")
         st.write(f"**{t('total_eur')} :**", f"{format_eur(safe_get(row, 'total_to_pay_eur', 0))} €")
         st.write(f"**{t('order_status')} :**", normalize_status(safe_get(row, "order_status", "—")))
-        st.write(f"**{t('payment_status')} :**", safe_get(row, "payment_status", "—"))
+        st.write(f"**{t('payment_status')} :**", normalize_payment_status(safe_get(row, "payment_status", "—")))
         st.write(f"**{t('forwarder_address')} :**", safe_get(row, "delivery_address", "—"))
 
         render_logistics_timeline(row)
@@ -1747,6 +1761,102 @@ def get_order_type_options():
 
 def is_physical_order(order_type_value: str) -> bool:
     return order_type_value in {ORDER_TYPE_PHYSICAL, ORDER_TYPE_PHYSICAL_EN}
+
+
+def render_post_order_actions(order_data: dict) -> None:
+    order_code = str(order_data.get("order_code", "")).strip()
+    product_title = str(order_data.get("product_title", "")).strip()
+    product_url = str(order_data.get("product_url", "")).strip()
+    merchant_total_amount = to_float(order_data.get("merchant_total_amount", 0.0), 0.0)
+    merchant_currency = str(order_data.get("merchant_currency", "EUR")).strip().upper() or "EUR"
+    momo_provider = str(order_data.get("momo_provider", "")).strip() or "MTN MoMo / Orange Money"
+    total_to_pay_xaf = to_float(order_data.get("total_to_pay_xaf", 0.0), 0.0)
+
+    st.success(t("order_created", order_code=order_code))
+    st.info(t("order_saved_info"))
+
+    preview = compute_payment_preview(
+        merchant_total_amount,
+        merchant_currency,
+    )
+
+    st.success(
+        t(
+            "estimated_summary",
+            merchant_xaf=format_xaf(preview["merchant_xaf"]),
+            merchant_eur=format_eur(preview["merchant_eur"]),
+            fee_xaf=format_xaf(preview["afripay_fee_xaf"]),
+            fee_eur=format_eur(preview["afripay_fee_eur"]),
+            total_xaf=format_xaf(preview["total_to_pay_xaf"]),
+            total_eur=format_eur(preview["total_to_pay_eur"]),
+        )
+    )
+
+    whatsapp_message = build_whatsapp_order_message(
+        order_code=order_code,
+        product_title=product_title,
+        merchant_total_amount=merchant_total_amount,
+        merchant_currency=merchant_currency,
+        product_url=product_url,
+    )
+    whatsapp_url = build_whatsapp_share_url(whatsapp_message)
+
+    st.markdown(t("share_order_title"))
+    st.link_button(
+        t("share_whatsapp"),
+        whatsapp_url,
+        use_container_width=True,
+    )
+
+    with st.expander(t("see_whatsapp_message")):
+        st.code(whatsapp_message)
+
+    payment_proof_message = build_payment_proof_whatsapp_message(
+        order_code=order_code,
+        amount_xaf=total_to_pay_xaf,
+        momo_provider=momo_provider,
+    )
+    payment_proof_url = build_whatsapp_direct_url(
+        get_whatsapp_number("CM"),
+        payment_proof_message,
+    )
+
+    st.markdown(t("payment_proof_title"))
+    st.info(t("payment_proof_help"))
+
+    if st.button(
+        t("prepare_payment_proof"),
+        key=f"prepare_proof_{order_code}",
+        use_container_width=True,
+    ):
+        updated = mark_payment_proof_sent(order_code, momo_provider)
+        if updated:
+            st.success(t("payment_proof_status_updated"))
+        else:
+            st.info(t("payment_proof_status_already"))
+
+    st.link_button(
+        t("send_payment_proof_whatsapp"),
+        payment_proof_url,
+        use_container_width=True,
+    )
+
+    with st.expander(t("see_payment_proof_message")):
+        st.code(payment_proof_message)
+
+    referral_message = build_referral_whatsapp_message()
+    referral_url = build_whatsapp_share_url(referral_message)
+
+    st.markdown(t("referral_title"))
+    st.info(t("referral_help"))
+    st.link_button(
+        t("referral_button"),
+        referral_url,
+        use_container_width=True,
+    )
+
+    with st.expander(t("see_referral_message")):
+        st.code(referral_message)
 
 
 def page_creer_commande() -> None:
@@ -1925,77 +2035,23 @@ def page_creer_commande() -> None:
             total_to_pay_eur=float(final_preview["total_to_pay_eur"]),
         )
 
-        st.success(t("order_created", order_code=order_code))
-        st.info(t("order_saved_info"))
-
-        st.success(
-            t(
-                "estimated_summary",
-                merchant_xaf=format_xaf(final_preview["merchant_xaf"]),
-                merchant_eur=format_eur(final_preview["merchant_eur"]),
-                fee_xaf=format_xaf(final_preview["afripay_fee_xaf"]),
-                fee_eur=format_eur(final_preview["afripay_fee_eur"]),
-                total_xaf=format_xaf(final_preview["total_to_pay_xaf"]),
-                total_eur=format_eur(final_preview["total_to_pay_eur"]),
-            )
-        )
-
-        whatsapp_message = build_whatsapp_order_message(
-            order_code=order_code,
-            product_title=product_title.strip(),
-            merchant_total_amount=merchant_total_amount,
-            merchant_currency=merchant_currency,
-            product_url=product_url.strip(),
-        )
-        whatsapp_url = build_whatsapp_share_url(whatsapp_message)
-
-        st.markdown(t("share_order_title"))
-        st.link_button(
-            t("share_whatsapp"),
-            whatsapp_url,
-            use_container_width=True,
-        )
-
-        with st.expander(t("see_whatsapp_message")):
-            st.code(whatsapp_message)
-
-        payment_proof_message = build_payment_proof_whatsapp_message(
-            order_code=order_code,
-            amount_xaf=final_preview["total_to_pay_xaf"],
-            momo_provider=momo_provider.strip() or "MTN MoMo / Orange Money",
-        )
-        payment_proof_url = build_whatsapp_direct_url(
-            get_whatsapp_number("CM"),
-            payment_proof_message,
-        )
-
-        st.markdown(t("payment_proof_title"))
-        st.info(t("payment_proof_help"))
-        st.link_button(
-            t("send_payment_proof_whatsapp"),
-            payment_proof_url,
-            use_container_width=True,
-        )
-
-        with st.expander(t("see_payment_proof_message")):
-            st.code(payment_proof_message)
-
-        referral_message = build_referral_whatsapp_message()
-        referral_url = build_whatsapp_share_url(referral_message)
-
-        st.markdown(t("referral_title"))
-        st.info(t("referral_help"))
-        st.link_button(
-            t("referral_button"),
-            referral_url,
-            use_container_width=True,
-        )
-
-        with st.expander(t("see_referral_message")):
-            st.code(referral_message)
+        st.session_state["last_created_order"] = {
+            "order_code": order_code,
+            "product_title": product_title.strip(),
+            "product_url": product_url.strip(),
+            "merchant_total_amount": float(merchant_total_amount),
+            "merchant_currency": merchant_currency,
+            "momo_provider": momo_provider.strip() or "MTN MoMo / Orange Money",
+            "total_to_pay_xaf": float(final_preview["total_to_pay_xaf"]),
+        }
 
         clear_captcha_error("order")
         refresh_captcha("order")
+        st.rerun()
+
+    last_created_order = st.session_state.get("last_created_order")
+    if last_created_order:
+        render_post_order_actions(last_created_order)
 
 
 def page_mes_commandes() -> None:
@@ -2032,7 +2088,7 @@ def page_mes_commandes() -> None:
             st.write(f"**{t('total_paid_label')} :** {format_xaf(safe_get(row, 'total_xaf', 0))} XAF ({format_eur(safe_get(row, 'total_to_pay_eur', 0))} €)")
             st.write(f"**{t('seller_fee_label')} :** {format_xaf(safe_get(row, 'seller_fee_xaf', 0))} XAF")
             st.write(f"**{t('forwarder_address_expander')} :** {safe_get(row, 'delivery_address', '—')}")
-            st.write(f"**{t('payment_label')} :** {safe_get(row, 'payment_status', '—')}")
+            st.write(f"**{t('payment_label')} :** {normalize_payment_status(safe_get(row, 'payment_status', '—'))}")
             st.write(f"**{t('status_label')} :** {normalize_status(status)}")
 
             render_logistics_timeline(row, title=t("timeline_order_title"))
