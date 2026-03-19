@@ -12,9 +12,18 @@ from services.admin_service import (
 from services.order_service import (
     ORDER_STATUS_OPTIONS,
     ORDER_STATUS_LABELS,
+    PAYMENT_STATUS_PENDING,
+    PAYMENT_STATUS_PROOF_SENT,
+    PAYMENT_STATUS_PROOF_RECEIVED,
+    PAYMENT_STATUS_CONFIRMED,
+    PAYMENT_STATUS_REJECTED,
+    get_payment_status_label,
     list_orders_all,
     update_merchant_info,
     update_order_status,
+    mark_payment_proof_received,
+    confirm_payment,
+    reject_payment,
 )
 from ui.branding import render_sidebar_branding
 
@@ -45,6 +54,15 @@ STATUS_STYLES = {
     "EN_COURS": {"label": "En cours", "color": "#facc15", "dot": "🟡"},
     "LIVREE": {"label": "Livrée", "color": "#3b82f6", "dot": "🔵"},
     "ANNULEE": {"label": "Annulée", "color": "#ef4444", "dot": "🔴"},
+}
+
+
+PAYMENT_STATUS_STYLES = {
+    PAYMENT_STATUS_PENDING: {"label": "En attente de paiement", "color": "#94a3b8", "dot": "⚪"},
+    PAYMENT_STATUS_PROOF_SENT: {"label": "Preuve en cours d'envoi", "color": "#f59e0b", "dot": "🟠"},
+    PAYMENT_STATUS_PROOF_RECEIVED: {"label": "Preuve reçue - vérification en cours", "color": "#3b82f6", "dot": "🔵"},
+    PAYMENT_STATUS_CONFIRMED: {"label": "Paiement confirmé", "color": "#22c55e", "dot": "🟢"},
+    PAYMENT_STATUS_REJECTED: {"label": "Paiement rejeté", "color": "#ef4444", "dot": "🔴"},
 }
 
 
@@ -142,6 +160,15 @@ def get_status_meta(order_status):
     )
 
 
+def get_payment_status_meta(payment_status):
+    status = str(payment_status or "").strip().upper()
+    if status in PAYMENT_STATUS_STYLES:
+        return PAYMENT_STATUS_STYLES[status]
+
+    label = get_payment_status_label(status or "PENDING")
+    return {"label": label, "color": "#94a3b8", "dot": "⚪"}
+
+
 def render_status_badge(order_status):
     meta = get_status_meta(order_status)
     st.markdown(
@@ -164,72 +191,129 @@ def render_status_badge(order_status):
     )
 
 
+def render_payment_status_badge(payment_status):
+    meta = get_payment_status_meta(payment_status)
+    st.markdown(
+        f"""
+        <div style="
+            display:inline-block;
+            padding:8px 12px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.04);
+            border:1px solid rgba(255,255,255,0.10);
+            font-weight:700;
+            color:{meta['color']};
+            margin-top:4px;
+            margin-bottom:8px;
+        ">
+            {meta['dot']} {html.escape(meta['label'])}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def infer_tracking_label(tracking_url: str) -> str:
+    url = str(tracking_url or "").strip().lower()
+
+    if not url:
+        return "Lien de suivi"
+
+    carrier_keywords = [
+        "dhl",
+        "ups",
+        "fedex",
+        "colissimo",
+        "chronopost",
+        "gls",
+        "dpd",
+        "usps",
+        "royalmail",
+        "yanwen",
+        "cainiao",
+        "4px",
+        "ems",
+        "aramex",
+    ]
+
+    if any(keyword in url for keyword in carrier_keywords):
+        return "Lien de suivi transporteur"
+
+    return "Lien de suivi marchand"
+
+
 def build_notification_message(order):
     client_name = safe_get(order, "user_name", "Client")
     order_code = safe_get(order, "order_code", "")
-    site_name = safe_get(order, "site_name", "Marchand")
+    order_status = str(safe_get(order, "order_status", "")).strip().upper()
+    order_status_label = ORDER_STATUS_LABELS.get(order_status, order_status or "—")
 
-    product_url = clean_product_url(safe_get(order, "product_url", ""))
     merchant_confirmation_url = clean_product_url(
         safe_get(order, "merchant_confirmation_url", "")
     )
+    merchant_tracking_url = clean_product_url(
+        safe_get(order, "merchant_tracking_url", "")
+    )
+    merchant_tracking_label = infer_tracking_label(merchant_tracking_url)
 
     merchant_order_number = safe_get(order, "merchant_order_number", "")
-    merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
-    merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
     merchant_notes = safe_get(order, "merchant_notes", "")
 
-    merchant_amount_text = format_merchant_amount(order)
-
     lines = [
-        f"Bonjour {client_name},",
+        f"Bonjour {client_name} 👋",
         "",
-        "Votre commande AfriPay a été mise à jour ✅",
+        "📦 Votre commande AfriPay a été mise à jour",
+        "",
     ]
 
     if order_code:
-        lines.append(f"Référence AfriPay : {order_code}")
-
-    if site_name:
-        lines.append(f"Marchand : {site_name}")
-
-    if merchant_amount_text:
-        lines.append(f"Montant marchand : {merchant_amount_text}")
-
-    if merchant_order_number:
-        lines.append(f"Numéro de commande marchand : {merchant_order_number}")
-
-    if merchant_purchase_date:
-        lines.append(f"Date d'achat : {merchant_purchase_date}")
+        lines.append(f"🔖 Référence AfriPay : {order_code}")
 
     if merchant_status:
-        lines.append(f"Statut marchand : {merchant_status}")
+        lines.append(f"📍 Statut marchand : {merchant_status}")
+    else:
+        lines.append(f"📍 Statut AfriPay : {order_status_label}")
 
-    if product_url:
-        lines.append(f"Lien produit : {product_url}")
+    if merchant_order_number:
+        lines.append(f"🧾 N° marchand : {merchant_order_number}")
 
-    if merchant_confirmation_url and merchant_confirmation_url != product_url:
-        lines.append(f"Lien de confirmation : {merchant_confirmation_url}")
+    if merchant_confirmation_url:
+        lines.extend(
+            [
+                "",
+                "🔗 Lien de confirmation :",
+                merchant_confirmation_url,
+            ]
+        )
 
     if merchant_tracking_url:
-        lines.append(f"Lien de suivi : {merchant_tracking_url}")
+        lines.extend(
+            [
+                "",
+                f"🔗 {merchant_tracking_label} :",
+                merchant_tracking_url,
+            ]
+        )
 
     if merchant_notes:
-        lines.append(f"Note AfriPay : {merchant_notes}")
+        lines.extend(
+            [
+                "",
+                f"📝 Note AfriPay : {merchant_notes}",
+            ]
+        )
 
-    lines.append("")
-    lines.append(
-        "Rappel : le dédouanement et la livraison finale restent sous la responsabilité de votre transitaire / agent."
+    lines.extend(
+        [
+            "",
+            "⚠️ Rappel :",
+            "Le dédouanement et la livraison finale restent sous la responsabilité de votre transitaire / agent.",
+            "",
+            "Merci pour votre confiance.",
+            "AfriPay Afrika",
+        ]
     )
-    lines.append("Merci de suivre votre commande avec votre transitaire.")
-    lines.append("")
-    lines.append("Équipe AfriPay")
-    lines.append("")
-    lines.append("🌍 AfriPay Afrika")
-    lines.append("Facilitateur des paiements internationaux")
-    lines.append("Essayez AfriPay pour vos prochaines commandes :")
-    lines.append(OFFICIAL_PUBLIC_URL)
 
     whatsapp_message = "\n".join(lines)
 
@@ -237,6 +321,8 @@ def build_notification_message(order):
 
     if merchant_status:
         sms_parts.append(f"Statut: {merchant_status}")
+    elif order_status_label:
+        sms_parts.append(f"Statut: {order_status_label}")
 
     if merchant_order_number:
         sms_parts.append(f"N° marchand: {merchant_order_number}")
@@ -324,7 +410,6 @@ def render_notification_block(order):
     merchant_order_number = safe_get(order, "merchant_order_number", "")
     merchant_confirmation_url = safe_get(order, "merchant_confirmation_url", "")
     merchant_tracking_url = safe_get(order, "merchant_tracking_url", "")
-    merchant_purchase_date = safe_get(order, "merchant_purchase_date", "")
     merchant_status = safe_get(order, "merchant_status", "")
     merchant_notes = safe_get(order, "merchant_notes", "")
 
@@ -333,7 +418,6 @@ def render_notification_block(order):
             merchant_order_number,
             merchant_confirmation_url,
             merchant_tracking_url,
-            merchant_purchase_date,
             merchant_status,
             merchant_notes,
         ]
@@ -377,6 +461,50 @@ def render_notification_block(order):
         )
 
 
+def render_payment_actions(order):
+    order_code = safe_get(order, "order_code", "")
+    payment_status = str(safe_get(order, "payment_status", "PENDING")).strip().upper()
+
+    st.markdown("## Gestion paiement")
+
+    render_payment_status_badge(payment_status)
+    st.caption(get_payment_status_label(payment_status))
+
+    note_default = safe_get(order, "payment_admin_note", "")
+    admin_note = st.text_area(
+        "Note admin paiement",
+        value=note_default,
+        key=f"payment_note_{order_code}",
+        placeholder="Exemple : capture reçue sur WhatsApp, montant vérifié, preuve incomplète, etc.",
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button(f"📥 Preuve reçue #{order_code}", key=f"proof_received_{order_code}", use_container_width=True):
+            if mark_payment_proof_received(order_code, admin_note):
+                st.success(f"{order_code} → PROOF_RECEIVED")
+                st.rerun()
+            else:
+                st.info("Transition non appliquée : vérifie le statut actuel de paiement.")
+
+    with col2:
+        if st.button(f"✅ Confirmer #{order_code}", key=f"confirm_{order_code}", use_container_width=True):
+            if confirm_payment(order_code, admin_note):
+                st.success(f"{order_code} → CONFIRMED")
+                st.rerun()
+            else:
+                st.info("Transition non appliquée : vérifie le statut actuel de paiement.")
+
+    with col3:
+        if st.button(f"❌ Rejeter #{order_code}", key=f"reject_{order_code}", use_container_width=True):
+            if reject_payment(order_code, admin_note):
+                st.warning(f"{order_code} → REJECTED")
+                st.rerun()
+            else:
+                st.info("Transition non appliquée : vérifie le statut actuel de paiement.")
+
+
 def render_order_card(order):
     order_id = safe_get(order, "id", "")
     order_code = safe_get(order, "order_code", f"CMD-{order_id}")
@@ -395,6 +523,7 @@ def render_order_card(order):
 
     order_status = str(safe_get(order, "order_status", "")).strip().upper()
     status_label = ORDER_STATUS_LABELS.get(order_status, order_status or "—")
+    payment_status = str(safe_get(order, "payment_status", "PENDING")).strip().upper()
 
     merchant_order_number = safe_get(order, "merchant_order_number", "")
     merchant_confirmation_url = safe_get(order, "merchant_confirmation_url", "")
@@ -412,9 +541,14 @@ def render_order_card(order):
             st.markdown(f"**Client :** {user_name}")
             st.markdown(f"**Téléphone :** {user_phone}")
             st.markdown(f"**Email :** {user_email}")
+
             st.markdown("**Statut AfriPay :**")
             render_status_badge(order_status)
             st.caption(status_label)
+
+            st.markdown("**Statut paiement :**")
+            render_payment_status_badge(payment_status)
+            st.caption(get_payment_status_label(payment_status))
 
         with c2:
             st.markdown(f"**Marchand :** {site_name}")
@@ -431,6 +565,9 @@ def render_order_card(order):
 
             if product_url:
                 st.markdown(f"**Lien produit :** {product_url}")
+
+        st.markdown("---")
+        render_payment_actions(order)
 
         st.markdown("---")
         st.markdown("## Gestion commande et marchand")
@@ -455,12 +592,12 @@ def render_order_card(order):
                 )
 
                 merchant_confirmation_url_input = st.text_input(
-                    "Lien confirmation",
+                    "Lien de confirmation",
                     value=merchant_confirmation_url,
                 )
 
                 merchant_tracking_url_input = st.text_input(
-                    "Lien suivi",
+                    "Lien de suivi marchand / transporteur",
                     value=merchant_tracking_url,
                 )
 
