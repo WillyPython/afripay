@@ -35,20 +35,29 @@ ORDER_STATUS_LABELS = {
 }
 
 
-PAYMENT_STATUS_PENDING = "EN_ATTENTE"
-PAYMENT_STATUS_PAID = "PAYE"
-PAYMENT_STATUS_FAILED = "ECHEC"
+# ===============================
+# STATUTS DE PAIEMENT FINTECH
+# ===============================
+PAYMENT_STATUS_PENDING = "PENDING"
+PAYMENT_STATUS_PROOF_SENT = "PROOF_SENT"
+PAYMENT_STATUS_PROOF_RECEIVED = "PROOF_RECEIVED"
+PAYMENT_STATUS_CONFIRMED = "CONFIRMED"
+PAYMENT_STATUS_REJECTED = "REJECTED"
 
 PAYMENT_STATUS_OPTIONS = [
     PAYMENT_STATUS_PENDING,
-    PAYMENT_STATUS_PAID,
-    PAYMENT_STATUS_FAILED,
+    PAYMENT_STATUS_PROOF_SENT,
+    PAYMENT_STATUS_PROOF_RECEIVED,
+    PAYMENT_STATUS_CONFIRMED,
+    PAYMENT_STATUS_REJECTED,
 ]
 
 PAYMENT_STATUS_LABELS = {
-    PAYMENT_STATUS_PENDING: "En attente",
-    PAYMENT_STATUS_PAID: "Payé",
-    PAYMENT_STATUS_FAILED: "Échec",
+    PAYMENT_STATUS_PENDING: "En attente de paiement",
+    PAYMENT_STATUS_PROOF_SENT: "Preuve en cours d'envoi",
+    PAYMENT_STATUS_PROOF_RECEIVED: "Preuve reçue - vérification en cours",
+    PAYMENT_STATUS_CONFIRMED: "Paiement confirmé",
+    PAYMENT_STATUS_REJECTED: "Paiement rejeté",
 }
 
 
@@ -550,6 +559,141 @@ def update_order_status(order_id, order_status=None, payment_status=None):
     conn.commit()
     cur.close()
     conn.close()
+
+
+# ===============================
+# ACTIONS FINTECH SUR LE PAIEMENT
+# ===============================
+def mark_payment_proof_sent(order_code, provider=None):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE orders
+        SET
+            payment_status = %s,
+            payment_provider = COALESCE(%s, payment_provider, momo_provider),
+            proof_sent_at = NOW(),
+            updated_at = NOW()
+        WHERE order_code = %s
+          AND payment_status = %s
+        """,
+        (
+            PAYMENT_STATUS_PROOF_SENT,
+            _clean_optional_text(provider),
+            _clean_text(order_code),
+            PAYMENT_STATUS_PENDING,
+        ),
+    )
+
+    updated = cur.rowcount > 0
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return updated
+
+
+def mark_payment_proof_received(order_code, admin_note=""):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE orders
+        SET
+            payment_status = %s,
+            proof_received_at = NOW(),
+            payment_admin_note = %s,
+            updated_at = NOW()
+        WHERE order_code = %s
+          AND payment_status IN (%s, %s)
+        """,
+        (
+            PAYMENT_STATUS_PROOF_RECEIVED,
+            _clean_text(admin_note),
+            _clean_text(order_code),
+            PAYMENT_STATUS_PROOF_SENT,
+            PAYMENT_STATUS_PENDING,
+        ),
+    )
+
+    updated = cur.rowcount > 0
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return updated
+
+
+def confirm_payment(order_code, admin_note=""):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE orders
+        SET
+            payment_status = %s,
+            payment_confirmed_at = NOW(),
+            payment_admin_note = %s,
+            updated_at = NOW()
+        WHERE order_code = %s
+          AND payment_status IN (%s, %s)
+        """,
+        (
+            PAYMENT_STATUS_CONFIRMED,
+            _clean_text(admin_note),
+            _clean_text(order_code),
+            PAYMENT_STATUS_PROOF_RECEIVED,
+            PAYMENT_STATUS_PROOF_SENT,
+        ),
+    )
+
+    updated = cur.rowcount > 0
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return updated
+
+
+def reject_payment(order_code, admin_note=""):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE orders
+        SET
+            payment_status = %s,
+            payment_rejected_at = NOW(),
+            payment_admin_note = %s,
+            updated_at = NOW()
+        WHERE order_code = %s
+          AND payment_status IN (%s, %s, %s)
+        """,
+        (
+            PAYMENT_STATUS_REJECTED,
+            _clean_text(admin_note),
+            _clean_text(order_code),
+            PAYMENT_STATUS_PENDING,
+            PAYMENT_STATUS_PROOF_SENT,
+            PAYMENT_STATUS_PROOF_RECEIVED,
+        ),
+    )
+
+    updated = cur.rowcount > 0
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return updated
 
 
 # ===============================
