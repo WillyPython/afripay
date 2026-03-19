@@ -53,11 +53,17 @@ OTP_WINDOW_MINUTES = 5
 LANG_FR = "FR"
 LANG_EN = "EN"
 
-ORDER_TYPE_PHYSICAL = "Produit physique"
-ORDER_TYPE_SERVICE = "Service / paiement digital"
+# Internal stable keys
+MENU_LOGIN = "login"
+MENU_DASHBOARD = "dashboard"
+MENU_TRACKING = "tracking"
+MENU_SIMULATE = "simulate"
+MENU_CREATE_ORDER = "create_order"
+MENU_MY_ORDERS = "my_orders"
+MENU_ADMIN = "admin"
 
-ORDER_TYPE_PHYSICAL_EN = "Physical product"
-ORDER_TYPE_SERVICE_EN = "Digital service / payment"
+ORDER_TYPE_PHYSICAL_KEY = "PHYSICAL"
+ORDER_TYPE_SERVICE_KEY = "SERVICE"
 
 STATUS_LABELS_FR = {
     "CREEE": "Créée",
@@ -223,10 +229,10 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "payment_parameters": "### 💳 Paramètres de paiement",
         "order_type": "Type de commande *",
         "order_type_help": "Choisissez « Produit physique » pour un achat à livrer, ou « Service / paiement digital » pour une certification, un abonnement, un logiciel, etc.",
+        "main_information": "### 🔗 Informations principales",
         "merchant_total_displayed": "Montant total affiché par le marchand *",
         "merchant_currency": "Devise du marchand *",
         "merchant_currency_help": "Choisissez la devise réellement affichée par le site marchand ou le service.",
-        "main_information": "### 🔗 Informations principales",
         "product_service_link": "🔗 Lien du produit ou du service *",
         "product_link_placeholder": "Collez ici le lien Amazon, Temu, WES, logiciel, hébergement, université, etc.",
         "product_link_tip": "💡 Astuce : Collez ici le lien du produit ou du service. Si votre commande contient plusieurs éléments, saisissez simplement le montant total affiché par le marchand.",
@@ -495,10 +501,10 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "payment_parameters": "### 💳 Payment settings",
         "order_type": "Order type *",
         "order_type_help": "Choose “Physical product” for a delivered purchase, or “Digital service / payment” for a certification, subscription, software, etc.",
+        "main_information": "### 🔗 Main information",
         "merchant_total_displayed": "Total amount displayed by the merchant *",
         "merchant_currency": "Merchant currency *",
         "merchant_currency_help": "Choose the currency actually displayed by the merchant site or service.",
-        "main_information": "### 🔗 Main information",
         "product_service_link": "🔗 Product or service link *",
         "product_link_placeholder": "Paste here the Amazon, Temu, WES, software, hosting, university, etc. link.",
         "product_link_tip": "💡 Tip: Paste the product or service link here. If your order contains several items, simply enter the total amount displayed by the merchant.",
@@ -641,31 +647,6 @@ def t(key: str, **kwargs) -> str:
     if kwargs:
         return text.format(**kwargs)
     return text
-
-
-def get_menu_options():
-    return [
-        t("menu_connexion"),
-        t("menu_dashboard"),
-        t("menu_tracking"),
-        t("menu_simulate"),
-        t("menu_create_order"),
-        t("menu_my_orders"),
-        t("menu_admin"),
-    ]
-
-
-def get_menu_key(key_name: str) -> str:
-    mapping = {
-        "login": t("menu_connexion"),
-        "dashboard": t("menu_dashboard"),
-        "tracking": t("menu_tracking"),
-        "simulate": t("menu_simulate"),
-        "create_order": t("menu_create_order"),
-        "my_orders": t("menu_my_orders"),
-        "admin": t("menu_admin"),
-    }
-    return mapping[key_name]
 
 
 def to_float(value, default=0.0):
@@ -840,8 +821,9 @@ def build_timeline_steps(order):
 
 def render_logistics_timeline(order, title=None):
     st.markdown(f"### {title or t('timeline_title')}")
-
     steps, current_index = build_timeline_steps(order)
+
+    step_word = "Step" if st.session_state.get("language", "fr") == "en" else "Étape"
 
     for index, step in enumerate(steps, start=1):
         step_position = index - 1
@@ -853,7 +835,7 @@ def render_logistics_timeline(order, title=None):
         else:
             icon = "⚪"
 
-        st.markdown(f"**{icon} Étape {index} — {step['title']}**")
+        st.markdown(f"**{icon} {step_word} {index} — {step['title']}**")
         st.caption(step["detail"])
 
 
@@ -1142,45 +1124,45 @@ def render_captcha_block(prefix: str, title: str = None, allow_refresh: bool = T
     return captcha_input
 
 
+def get_menu_options():
+    return [
+        MENU_LOGIN,
+        MENU_DASHBOARD,
+        MENU_TRACKING,
+        MENU_SIMULATE,
+        MENU_CREATE_ORDER,
+        MENU_MY_ORDERS,
+        MENU_ADMIN,
+    ]
+
+
+def get_menu_label(menu_key: str) -> str:
+    mapping = {
+        MENU_LOGIN: t("menu_connexion"),
+        MENU_DASHBOARD: t("menu_dashboard"),
+        MENU_TRACKING: t("menu_tracking"),
+        MENU_SIMULATE: t("menu_simulate"),
+        MENU_CREATE_ORDER: t("menu_create_order"),
+        MENU_MY_ORDERS: t("menu_my_orders"),
+        MENU_ADMIN: t("menu_admin"),
+    }
+    return mapping.get(menu_key, menu_key)
+
+
 def init_navigation_state() -> None:
     if "main_menu" not in st.session_state:
-        st.session_state["main_menu"] = get_menu_key("login")
+        st.session_state["main_menu"] = MENU_LOGIN
 
 
-def schedule_menu_redirect(menu_name: str) -> None:
-    if menu_name in get_menu_options():
-        st.session_state["pending_main_menu"] = menu_name
+def schedule_menu_redirect(menu_key: str) -> None:
+    if menu_key in get_menu_options():
+        st.session_state["pending_main_menu"] = menu_key
 
 
 def apply_pending_menu_redirect() -> None:
     pending_menu = st.session_state.pop("pending_main_menu", None)
     if pending_menu in get_menu_options():
         st.session_state["main_menu"] = pending_menu
-
-
-def refresh_menu_labels_after_language_change() -> None:
-    current = st.session_state.get("main_menu")
-    mapping_fr_to_key = {
-        TRANSLATIONS["fr"]["menu_connexion"]: "login",
-        TRANSLATIONS["fr"]["menu_dashboard"]: "dashboard",
-        TRANSLATIONS["fr"]["menu_tracking"]: "tracking",
-        TRANSLATIONS["fr"]["menu_simulate"]: "simulate",
-        TRANSLATIONS["fr"]["menu_create_order"]: "create_order",
-        TRANSLATIONS["fr"]["menu_my_orders"]: "my_orders",
-        TRANSLATIONS["fr"]["menu_admin"]: "admin",
-    }
-    mapping_en_to_key = {
-        TRANSLATIONS["en"]["menu_connexion"]: "login",
-        TRANSLATIONS["en"]["menu_dashboard"]: "dashboard",
-        TRANSLATIONS["en"]["menu_tracking"]: "tracking",
-        TRANSLATIONS["en"]["menu_simulate"]: "simulate",
-        TRANSLATIONS["en"]["menu_create_order"]: "create_order",
-        TRANSLATIONS["en"]["menu_my_orders"]: "my_orders",
-        TRANSLATIONS["en"]["menu_admin"]: "admin",
-    }
-
-    key_name = mapping_fr_to_key.get(current) or mapping_en_to_key.get(current) or "login"
-    st.session_state["main_menu"] = get_menu_key(key_name)
 
 
 def consume_flash_message() -> None:
@@ -1239,7 +1221,15 @@ def clear_login_test_otp() -> None:
     st.session_state.pop("otp_phone", None)
 
 
-def clear_login_form_state() -> None:
+def request_login_form_reset() -> None:
+    st.session_state["reset_login_form_pending"] = True
+
+
+def apply_login_form_reset_if_needed() -> None:
+    if not st.session_state.pop("reset_login_form_pending", False):
+        return
+
+    st.session_state["login_phone_input"] = ""
     st.session_state["login_otp_input"] = ""
     st.session_state["login_name_input"] = ""
     st.session_state["login_email_input"] = ""
@@ -1334,9 +1324,23 @@ def get_otp_rate_limit_status(phone: str) -> dict:
     }
 
 
+def get_order_type_options():
+    return [ORDER_TYPE_PHYSICAL_KEY, ORDER_TYPE_SERVICE_KEY]
+
+
+def get_order_type_label(order_type_key: str) -> str:
+    if order_type_key == ORDER_TYPE_PHYSICAL_KEY:
+        return "Physical product" if st.session_state.get("language", "fr") == "en" else "Produit physique"
+    return "Digital service / payment" if st.session_state.get("language", "fr") == "en" else "Service / paiement digital"
+
+
+def is_physical_order(order_type_value: str) -> bool:
+    return order_type_value == ORDER_TYPE_PHYSICAL_KEY
+
+
 def init_create_order_state() -> None:
     defaults = {
-        "create_order_type": ORDER_TYPE_PHYSICAL if st.session_state.get("language", "fr") == "fr" else ORDER_TYPE_PHYSICAL_EN,
+        "create_order_type": ORDER_TYPE_PHYSICAL_KEY,
         "create_order_amount": 0.0,
         "create_order_currency": "XAF",
         "create_order_product_url": "",
@@ -1353,7 +1357,15 @@ def init_create_order_state() -> None:
             st.session_state[key] = value
 
 
-def reset_create_order_form_state() -> None:
+def request_create_order_form_reset() -> None:
+    st.session_state["reset_create_order_form_pending"] = True
+
+
+def apply_create_order_form_reset_if_needed() -> None:
+    if not st.session_state.pop("reset_create_order_form_pending", False):
+        return
+
+    st.session_state["create_order_type"] = ORDER_TYPE_PHYSICAL_KEY
     st.session_state["create_order_amount"] = 0.0
     st.session_state["create_order_currency"] = "XAF"
     st.session_state["create_order_product_url"] = ""
@@ -1363,11 +1375,6 @@ def reset_create_order_form_state() -> None:
     st.session_state["create_order_delivery_address"] = ""
     st.session_state["create_order_momo_provider"] = ""
     st.session_state["create_order_client_ack"] = False
-
-    if st.session_state.get("language", "fr") == "en":
-        st.session_state["create_order_type"] = ORDER_TYPE_PHYSICAL_EN
-    else:
-        st.session_state["create_order_type"] = ORDER_TYPE_PHYSICAL
 
 
 def has_create_order_draft_data() -> bool:
@@ -1396,7 +1403,6 @@ def render_sidebar() -> str:
     new_language = "fr" if current_language == LANG_FR else "en"
     if new_language != st.session_state.get("language", "fr"):
         st.session_state["language"] = new_language
-        refresh_menu_labels_after_language_change()
         st.rerun()
 
     if st.session_state.get("logged_in"):
@@ -1414,7 +1420,7 @@ def render_sidebar() -> str:
             save_session_token_in_query_params(None)
             clear_login_test_otp()
             logout_user()
-            schedule_menu_redirect(get_menu_key("login"))
+            schedule_menu_redirect(MENU_LOGIN)
             st.rerun()
     else:
         st.sidebar.info(t("not_connected"))
@@ -1423,14 +1429,17 @@ def render_sidebar() -> str:
 
     st.sidebar.radio(
         t("menu"),
-        get_menu_options(),
+        options=get_menu_options(),
         key="main_menu",
+        format_func=get_menu_label,
     )
 
     return st.session_state["main_menu"]
 
 
 def page_connexion() -> None:
+    apply_login_form_reset_if_needed()
+
     st.title(t("page_login_title"))
     consume_flash_message()
 
@@ -1563,10 +1572,10 @@ def page_connexion() -> None:
         clear_captcha_error("login")
         refresh_captcha("login")
         clear_login_test_otp()
-        clear_login_form_state()
+        request_login_form_reset()
 
         st.session_state["flash_message"] = t("login_success")
-        schedule_menu_redirect(get_menu_key("create_order"))
+        schedule_menu_redirect(MENU_CREATE_ORDER)
         st.rerun()
 
 
@@ -1819,16 +1828,6 @@ def render_payment_summary(preview):
     st.info(t("pricing_info", percent=int(AFRIPAY_PERCENT_FEE * 100)))
 
 
-def get_order_type_options():
-    if st.session_state.get("language", "fr") == "en":
-        return [ORDER_TYPE_PHYSICAL_EN, ORDER_TYPE_SERVICE_EN]
-    return [ORDER_TYPE_PHYSICAL, ORDER_TYPE_SERVICE]
-
-
-def is_physical_order(order_type_value: str) -> bool:
-    return order_type_value in {ORDER_TYPE_PHYSICAL, ORDER_TYPE_PHYSICAL_EN}
-
-
 def render_post_order_actions(order_data: dict) -> None:
     order_code = str(order_data.get("order_code", "")).strip()
     product_title = str(order_data.get("product_title", "")).strip()
@@ -1926,14 +1925,15 @@ def render_post_order_actions(order_data: dict) -> None:
 
 
 def page_creer_commande() -> None:
+    init_create_order_state()
+    apply_create_order_form_reset_if_needed()
+
     st.title(t("create_order_title"))
     consume_flash_message()
 
     if not st.session_state.get("logged_in"):
         st.warning(t("need_login_create_order"))
         return
-
-    init_create_order_state()
 
     st.info(t("create_order_step_info"))
     st.info(t("create_order_info"))
@@ -1951,6 +1951,7 @@ def page_creer_commande() -> None:
         t("order_type"),
         get_order_type_options(),
         key="create_order_type",
+        format_func=get_order_type_label,
         help=t("order_type_help"),
     )
 
@@ -1964,7 +1965,6 @@ def page_creer_commande() -> None:
     merchant_currency = st.selectbox(
         t("merchant_currency"),
         ["XAF", "EUR"],
-        index=0 if st.session_state.get("create_order_currency", "XAF") == "XAF" else 1,
         key="create_order_currency",
         help=t("merchant_currency_help"),
     )
@@ -2122,7 +2122,7 @@ def page_creer_commande() -> None:
 
         clear_captcha_error("order")
         refresh_captcha("order")
-        reset_create_order_form_state()
+        request_create_order_form_reset()
         st.rerun()
 
     last_created_order = st.session_state.get("last_created_order")
@@ -2248,19 +2248,19 @@ def main() -> None:
 
     menu = render_sidebar()
 
-    if menu == get_menu_key("login"):
+    if menu == MENU_LOGIN:
         page_connexion()
-    elif menu == get_menu_key("dashboard"):
+    elif menu == MENU_DASHBOARD:
         page_dashboard_client()
-    elif menu == get_menu_key("tracking"):
+    elif menu == MENU_TRACKING:
         page_tracking()
-    elif menu == get_menu_key("simulate"):
+    elif menu == MENU_SIMULATE:
         page_simuler()
-    elif menu == get_menu_key("create_order"):
+    elif menu == MENU_CREATE_ORDER:
         page_creer_commande()
-    elif menu == get_menu_key("my_orders"):
+    elif menu == MENU_MY_ORDERS:
         page_mes_commandes()
-    elif menu == get_menu_key("admin"):
+    elif menu == MENU_ADMIN:
         page_admin()
 
 
