@@ -2,7 +2,7 @@ import inspect
 import os
 import secrets
 import urllib.parse
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -94,11 +94,6 @@ def safe_float(value, default=0.0) -> float:
 
 
 def round_xaf(value) -> int:
-    """
-    AfriPay règle validée : pas de centimes XAF.
-    Arrondi au 10 FCFA le plus proche.
-    Exemple : 95_939 -> 95_940
-    """
     amount = safe_float(value, 0)
     return int(round(amount / 10.0) * 10)
 
@@ -145,10 +140,11 @@ Merci.
     return f"https://wa.me/{number}?text={encoded_message}"
 
 
-def build_share_whatsapp_url(order_code: str) -> str:
+def build_support_whatsapp_url(order_code: str) -> str:
     whatsapp_number = WHATSAPP_DEFAULT or WHATSAPP_CM
     if not whatsapp_number:
         return ""
+
     number = whatsapp_number.replace("+", "").replace(" ", "")
     message = f"""Bonjour AfriPay,
 
@@ -187,10 +183,6 @@ def get_value(obj, *keys, default=None):
 
 
 def invoke_service(func, alias_mapping: dict):
-    """
-    Appelle intelligemment un service en filtrant les kwargs
-    selon la signature réelle du projet.
-    """
     signature = inspect.signature(func)
     parameters = signature.parameters
     accepts_var_kwargs = any(
@@ -360,7 +352,7 @@ def update_order_db(order_id, updates: dict):
 
 
 # =========================================================
-# STATE HELPERS
+# APP STATE
 # =========================================================
 def init_app_state():
     defaults = {
@@ -398,7 +390,7 @@ def current_user():
         return user
 
     for key in ["user", "authenticated_user"]:
-        if key in st.session_state and st.session_state.get(key):
+        if st.session_state.get(key):
             return st.session_state.get(key)
 
     return None
@@ -413,7 +405,7 @@ def user_is_logged_in() -> bool:
 
 
 # =========================================================
-# SESSION RESTORATION
+# BOOTSTRAP
 # =========================================================
 def bootstrap_core():
     init_db()
@@ -448,7 +440,7 @@ def bootstrap_core():
 
 
 # =========================================================
-# AUTH / OTP LOGIC
+# AUTH / OTP
 # =========================================================
 def generate_otp() -> str:
     return f"{secrets.randbelow(900000) + 100000}"
@@ -563,7 +555,7 @@ def logout_current_user():
 
 
 # =========================================================
-# ORDER HELPERS
+# ORDERS
 # =========================================================
 def create_order_safely(payload: dict):
     alias_mapping = {
@@ -813,6 +805,75 @@ def render_order_card(order, show_actions=True):
 
 
 # =========================================================
+# TERMS OF USE
+# =========================================================
+def render_terms_of_use_block():
+    st.markdown("### Conditions d’utilisation AfriPay")
+
+    with st.expander("Lire les Conditions d’Utilisation AfriPay", expanded=False):
+        st.markdown(
+            """
+**1. Objet**  
+Les présentes Conditions d’Utilisation définissent les règles applicables à l’utilisation de la plateforme **AfriPay Afrika**.
+
+AfriPay Afrika est un service de **facilitation de paiement international**, permettant aux utilisateurs de demander l’exécution d’un paiement auprès d’un marchand en leur nom.
+
+**2. Nature du service**  
+AfriPay Afrika agit exclusivement comme **mandataire du client pour l’exécution d’un paiement auprès d’un marchand tiers**.
+
+AfriPay :
+- n’est pas une banque
+- n’est pas un établissement de paiement
+- ne fournit pas de portefeuille électronique
+- ne propose pas de stockage de fonds
+- n’exécute pas de transfert d’argent entre utilisateurs
+
+**3. Mandat donné par le client**  
+En utilisant AfriPay, le client :
+- mandate expressément AfriPay pour effectuer un paiement en son nom
+- confirme que les informations fournies sont exactes
+- accepte que le paiement soit réalisé selon les conditions indiquées
+
+Le client reste seul responsable :
+- du choix du marchand
+- de la validité de la commande
+- du contenu du produit ou service acheté
+
+**4. Processus de paiement**  
+1. Le client crée une commande via la plateforme  
+2. Le client effectue un paiement via Mobile Money  
+3. Le client transmet une preuve de paiement  
+4. AfriPay vérifie la conformité du paiement  
+5. AfriPay procède au paiement auprès du marchand
+
+**5. Absence de détention de fonds**  
+AfriPay ne conserve pas de fonds pour le compte du client.
+
+**6. Frais de service**  
+AfriPay applique des frais de service affichés avant validation de la commande.
+
+**7. Responsabilité**  
+AfriPay ne peut être tenu responsable :
+- des défaillances du marchand
+- de la qualité des produits ou services achetés
+- des retards de livraison
+- des problèmes liés au transport ou au dédouanement
+
+Le client est responsable de la coordination avec son transitaire ou agent.
+
+**8. Données fournies par le client**  
+Le client s’engage à fournir des informations exactes. Toute fausse déclaration peut entraîner la suspension du service.
+
+**9. Suspension / refus de service**  
+AfriPay se réserve le droit de refuser une commande ou de suspendre un utilisateur en cas de fraude, incohérence ou usage abusif.
+
+**10. Acceptation**  
+En validant sa commande, le client reconnaît avoir lu, compris et accepté les présentes conditions sans réserve.
+            """
+        )
+
+
+# =========================================================
 # AUTH PANELS
 # =========================================================
 def render_login_area():
@@ -927,6 +988,8 @@ def render_create_order_tab(user):
     name = get_value(user, "name", "full_name", default="")
     email = get_value(user, "email", default="")
 
+    render_terms_of_use_block()
+
     with st.form("create_order_form", clear_on_submit=True):
         product_url = st.text_input(
             "Lien du produit / service",
@@ -955,6 +1018,16 @@ def render_create_order_tab(user):
             placeholder="Informations utiles sur la commande",
         )
 
+        st.markdown("---")
+        st.caption(
+            "En validant, vous mandatez AfriPay pour effectuer le paiement en votre nom auprès du marchand sélectionné."
+        )
+
+        accepted_terms = st.checkbox(
+            "J’ai lu et j’accepte les Conditions d’Utilisation AfriPay",
+            key="accepted_terms_create_order",
+        )
+
         submitted = st.form_submit_button("Créer la commande", use_container_width=True)
 
     if submitted:
@@ -972,6 +1045,9 @@ def render_create_order_tab(user):
             return
         if not clearance_agent_address.strip():
             st.error("L’adresse du transitaire / agent est obligatoire.")
+            return
+        if not accepted_terms:
+            st.error("Vous devez accepter les Conditions d’Utilisation AfriPay pour continuer.")
             return
 
         financials = compute_financials(merchant_total_eur)
@@ -1074,11 +1150,11 @@ def render_tracking_tab(user):
                     st.warning("Impossible de mettre à jour le statut automatiquement.")
 
         with col2:
-            share_url = build_share_whatsapp_url(get_order_code(order))
-            if share_url:
+            support_url = build_support_whatsapp_url(get_order_code(order))
+            if support_url:
                 st.link_button(
                     "💬 Ouvrir WhatsApp support",
-                    share_url,
+                    support_url,
                     use_container_width=True,
                 )
 
@@ -1129,45 +1205,44 @@ def render_public_tracking():
 # ADMIN
 # =========================================================
 def render_admin_sidebar():
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("## Admin")
+    st.markdown("---")
+    st.markdown("## Admin")
 
-        if st.session_state.get("admin_authenticated"):
-            st.success("Admin connecté")
-            if st.button("Déconnexion admin", use_container_width=True):
-                try:
-                    logout_admin()
-                except Exception:
-                    pass
-                st.session_state["admin_authenticated"] = False
-                st.rerun()
-            return
-
-        configured = False
-        try:
-            configured = admin_is_configured()
-        except Exception:
-            configured = True
-
-        if not configured:
-            st.warning("Admin non configuré.")
-            return
-
-        with st.form("admin_login_form", clear_on_submit=True):
-            admin_password = st.text_input("Mot de passe admin", type="password")
-            admin_submit = st.form_submit_button("Connexion admin", use_container_width=True)
-
-        if admin_submit:
+    if st.session_state.get("admin_authenticated"):
+        st.success("Admin connecté")
+        if st.button("Déconnexion admin", use_container_width=True):
             try:
-                if verify_admin_password(admin_password):
-                    st.session_state["admin_authenticated"] = True
-                    st.success("Connexion admin réussie.")
-                    st.rerun()
-                else:
-                    st.error("Mot de passe incorrect.")
-            except Exception as exc:
-                st.error(f"Connexion admin impossible : {exc}")
+                logout_admin()
+            except Exception:
+                pass
+            st.session_state["admin_authenticated"] = False
+            st.rerun()
+        return
+
+    configured = False
+    try:
+        configured = admin_is_configured()
+    except Exception:
+        configured = True
+
+    if not configured:
+        st.warning("Admin non configuré.")
+        return
+
+    with st.form("admin_login_form", clear_on_submit=True):
+        admin_password = st.text_input("Mot de passe admin", type="password")
+        admin_submit = st.form_submit_button("Connexion admin", use_container_width=True)
+
+    if admin_submit:
+        try:
+            if verify_admin_password(admin_password):
+                st.session_state["admin_authenticated"] = True
+                st.success("Connexion admin réussie.")
+                st.rerun()
+            else:
+                st.error("Mot de passe incorrect.")
+        except Exception as exc:
+            st.error(f"Connexion admin impossible : {exc}")
 
 
 def render_admin_dashboard():
@@ -1216,7 +1291,10 @@ def render_admin_dashboard():
             tracking_status = str(get_order_tracking_status(order))
             admin_note_value = str(get_value(order, "admin_note", default=""))
 
-            with st.expander(f"{code or '-'} • {merchant_name} • {format_xaf(get_order_total_xaf(order))}", expanded=False):
+            with st.expander(
+                f"{code or '-'} • {merchant_name} • {format_xaf(get_order_total_xaf(order))}",
+                expanded=False,
+            ):
                 render_order_card(order, show_actions=False)
 
                 with st.form(f"admin_order_update_{order_id}", clear_on_submit=False):
@@ -1247,7 +1325,6 @@ def render_admin_dashboard():
                             key=f"payment_status_select_{order_id}",
                         )
 
-                    possible_tracking_columns = {"tracking_status", "order_status", "status"}
                     tracking_column_present = next(
                         (col for col in ["tracking_status", "order_status", "status"] if col in columns),
                         None,
@@ -1311,12 +1388,13 @@ def render_sidebar():
             st.write(f"**Orange Money :** {ORANGE_MONEY_NUMBER}")
 
         st.markdown("---")
+
         if user_is_logged_in():
             render_logged_user_box()
         else:
             render_login_area()
 
-    render_admin_sidebar()
+        render_admin_sidebar()
 
 
 # =========================================================
