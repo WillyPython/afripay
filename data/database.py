@@ -232,8 +232,16 @@ def init_db():
             cur,
             "orders",
             "payment_status",
-            "TEXT DEFAULT 'EN_ATTENTE'"
+            "TEXT DEFAULT 'PENDING'"
         )
+
+        # nouveaux champs paiement fintech
+        add_column_if_missing(cur, "orders", "payment_provider", "TEXT")
+        add_column_if_missing(cur, "orders", "proof_sent_at", "TIMESTAMP")
+        add_column_if_missing(cur, "orders", "proof_received_at", "TIMESTAMP")
+        add_column_if_missing(cur, "orders", "payment_confirmed_at", "TIMESTAMP")
+        add_column_if_missing(cur, "orders", "payment_rejected_at", "TIMESTAMP")
+        add_column_if_missing(cur, "orders", "payment_admin_note", "TEXT")
 
         # tracking marchand
         add_column_if_missing(cur, "orders", "merchant_status", "TEXT")
@@ -294,6 +302,43 @@ def init_db():
             """
         )
 
+        # ancienne logique paiement -> nouvelle logique fintech
+        cur.execute(
+            """
+            UPDATE orders
+            SET payment_status = 'PENDING'
+            WHERE payment_status IS NULL
+               OR TRIM(payment_status) = ''
+               OR payment_status = 'EN_ATTENTE'
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET payment_status = 'CONFIRMED'
+            WHERE payment_status = 'PAYE'
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET payment_status = 'REJECTED'
+            WHERE payment_status = 'ECHEC'
+            """
+        )
+
+        cur.execute(
+            """
+            UPDATE orders
+            SET payment_provider = momo_provider
+            WHERE (payment_provider IS NULL OR TRIM(payment_provider) = '')
+              AND momo_provider IS NOT NULL
+              AND TRIM(momo_provider) <> ''
+            """
+        )
+
         # -------------------------
         # CONTRAINTE UNIQUE order_code
         # -------------------------
@@ -330,6 +375,7 @@ def init_db():
         add_index_if_missing(cur, "idx_orders_country_code", "orders", "(country_code)")
         add_index_if_missing(cur, "idx_orders_merchant_status", "orders", "(merchant_status)")
         add_index_if_missing(cur, "idx_orders_merchant_currency", "orders", "(merchant_currency)")
+        add_index_if_missing(cur, "idx_orders_payment_provider", "orders", "(payment_provider)")
 
         # -------------------------
         # USER SESSIONS
