@@ -635,6 +635,18 @@ def init_language_state() -> None:
         st.session_state["language"] = "fr"
 
 
+def init_login_state() -> None:
+    defaults = {
+        "login_phone_input": "",
+        "login_name_input": "",
+        "login_email_input": "",
+        "login_otp_widget_version": 0,
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
 def t(key: str, **kwargs) -> str:
     lang = st.session_state.get("language", "fr")
     text = TRANSLATIONS.get(lang, TRANSLATIONS["fr"]).get(key, key)
@@ -1239,8 +1251,21 @@ def clear_login_test_otp() -> None:
     st.session_state.pop("otp_phone", None)
 
 
+def get_login_otp_widget_key() -> str:
+    version = int(st.session_state.get("login_otp_widget_version", 0))
+    return f"login_otp_input_v{version}"
+
+
+def clear_login_otp_input_state() -> None:
+    current_key = get_login_otp_widget_key()
+    st.session_state[current_key] = ""
+    st.session_state["login_otp_widget_version"] = int(
+        st.session_state.get("login_otp_widget_version", 0)
+    ) + 1
+
+
 def clear_login_form_state() -> None:
-    st.session_state["login_otp_input"] = ""
+    clear_login_otp_input_state()
     st.session_state["login_name_input"] = ""
     st.session_state["login_email_input"] = ""
 
@@ -1413,6 +1438,7 @@ def render_sidebar() -> str:
 
             save_session_token_in_query_params(None)
             clear_login_test_otp()
+            clear_login_form_state()
             logout_user()
             schedule_menu_redirect(get_menu_key("login"))
             st.rerun()
@@ -1501,16 +1527,19 @@ def page_connexion() -> None:
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
         st.session_state["otp_phone"] = clean_phone
-        st.session_state["login_otp_input"] = ""
+
+        # Reset fiable du champ OTP visible
+        clear_login_otp_input_state()
 
         record_otp_request(clean_phone)
 
         st.success(t("otp_success"))
         st.rerun()
 
+    otp_widget_key = get_login_otp_widget_key()
     otp_input = st.text_input(
         t("enter_otp"),
-        key="login_otp_input",
+        key=otp_widget_key,
         placeholder=t("otp_placeholder"),
     )
     name = st.text_input(t("name"), key="login_name_input", placeholder=t("optional"))
@@ -2240,6 +2269,7 @@ def main() -> None:
     ensure_defaults()
     init_session()
     init_language_state()
+    init_login_state()
     init_navigation_state()
     init_otp_rate_limit_state()
     init_create_order_state()
