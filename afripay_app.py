@@ -1501,6 +1501,7 @@ def page_connexion() -> None:
         otp = f"{secrets.randbelow(900000) + 100000}"
         st.session_state["otp_code"] = otp
         st.session_state["otp_phone"] = clean_phone
+        st.session_state["login_otp_input"] = ""
 
         record_otp_request(clean_phone)
 
