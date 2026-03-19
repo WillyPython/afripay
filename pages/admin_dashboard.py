@@ -111,6 +111,20 @@ def get_product_label(row, default="—"):
     return default
 
 
+def get_display_client_name(order, default="Client"):
+    user_name = str(safe_get(order, "user_name", "") or "").strip()
+    if user_name:
+        return user_name
+
+    user_phone = str(safe_get(order, "user_phone", "") or "").strip()
+    digits_only = "".join(ch for ch in user_phone if ch.isdigit())
+
+    if len(digits_only) >= 4:
+        return f"Client {digits_only[-4:]}"
+
+    return default
+
+
 def format_original_merchant_amount(order):
     merchant_total_amount = float(safe_get(order, "merchant_total_amount", 0) or 0)
     merchant_currency = str(
@@ -243,7 +257,7 @@ def infer_tracking_label(tracking_url: str) -> str:
 
 
 def build_notification_message(order):
-    client_name = safe_get(order, "user_name", "Client")
+    client_name = get_display_client_name(order)
     order_code = safe_get(order, "order_code", "")
     order_status = str(safe_get(order, "order_status", "")).strip().upper()
     order_status_label = ORDER_STATUS_LABELS.get(order_status, order_status or "—")
@@ -509,7 +523,7 @@ def render_order_card(order):
     order_id = safe_get(order, "id", "")
     order_code = safe_get(order, "order_code", f"CMD-{order_id}")
 
-    user_name = safe_get(order, "user_name", "Client")
+    user_name = get_display_client_name(order)
     user_phone = safe_get(order, "user_phone", "—")
     user_email = safe_get(order, "user_email", "—")
 
