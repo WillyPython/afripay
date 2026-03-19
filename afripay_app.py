@@ -1257,8 +1257,6 @@ def get_login_otp_widget_key() -> str:
 
 
 def clear_login_otp_input_state() -> None:
-    current_key = get_login_otp_widget_key()
-    st.session_state[current_key] = ""
     st.session_state["login_otp_widget_version"] = int(
         st.session_state.get("login_otp_widget_version", 0)
     ) + 1
@@ -1528,7 +1526,7 @@ def page_connexion() -> None:
         st.session_state["otp_code"] = otp
         st.session_state["otp_phone"] = clean_phone
 
-        # Reset fiable du champ OTP visible
+        # Reset fiable du champ OTP visible par rotation de clé uniquement
         clear_login_otp_input_state()
 
         record_otp_request(clean_phone)
