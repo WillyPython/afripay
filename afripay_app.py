@@ -1239,6 +1239,12 @@ def clear_login_test_otp() -> None:
     st.session_state.pop("otp_phone", None)
 
 
+def clear_login_form_state() -> None:
+    st.session_state["login_otp_input"] = ""
+    st.session_state["login_name_input"] = ""
+    st.session_state["login_email_input"] = ""
+
+
 def init_otp_rate_limit_state() -> None:
     if "otp_request_log" not in st.session_state:
         st.session_state["otp_request_log"] = {}
@@ -1328,6 +1334,55 @@ def get_otp_rate_limit_status(phone: str) -> dict:
     }
 
 
+def init_create_order_state() -> None:
+    defaults = {
+        "create_order_type": ORDER_TYPE_PHYSICAL if st.session_state.get("language", "fr") == "fr" else ORDER_TYPE_PHYSICAL_EN,
+        "create_order_amount": 0.0,
+        "create_order_currency": "XAF",
+        "create_order_product_url": "",
+        "create_order_product_title": "",
+        "create_order_site_name": "",
+        "create_order_product_specs": "",
+        "create_order_delivery_address": "",
+        "create_order_momo_provider": "",
+        "create_order_client_ack": False,
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def reset_create_order_form_state() -> None:
+    st.session_state["create_order_amount"] = 0.0
+    st.session_state["create_order_currency"] = "XAF"
+    st.session_state["create_order_product_url"] = ""
+    st.session_state["create_order_product_title"] = ""
+    st.session_state["create_order_site_name"] = ""
+    st.session_state["create_order_product_specs"] = ""
+    st.session_state["create_order_delivery_address"] = ""
+    st.session_state["create_order_momo_provider"] = ""
+    st.session_state["create_order_client_ack"] = False
+
+    if st.session_state.get("language", "fr") == "en":
+        st.session_state["create_order_type"] = ORDER_TYPE_PHYSICAL_EN
+    else:
+        st.session_state["create_order_type"] = ORDER_TYPE_PHYSICAL
+
+
+def has_create_order_draft_data() -> bool:
+    return any([
+        str(st.session_state.get("create_order_product_url", "")).strip(),
+        str(st.session_state.get("create_order_product_title", "")).strip(),
+        str(st.session_state.get("create_order_site_name", "")).strip(),
+        str(st.session_state.get("create_order_product_specs", "")).strip(),
+        str(st.session_state.get("create_order_delivery_address", "")).strip(),
+        str(st.session_state.get("create_order_momo_provider", "")).strip(),
+        bool(st.session_state.get("create_order_client_ack", False)),
+        to_float(st.session_state.get("create_order_amount", 0.0), 0.0) > 0,
+    ])
+
+
 def render_sidebar() -> str:
     render_sidebar_branding()
 
@@ -1384,7 +1439,16 @@ def page_connexion() -> None:
     st.info(t("login_info"))
 
     default_phone = str(st.session_state.get("otp_phone", "") or "")
-    phone = st.text_input(t("phone"), value=default_phone, placeholder="+2376...")
+    if "login_phone_input" not in st.session_state:
+        st.session_state["login_phone_input"] = default_phone
+    elif default_phone and not str(st.session_state.get("login_phone_input", "")).strip():
+        st.session_state["login_phone_input"] = default_phone
+
+    phone = st.text_input(
+        t("phone"),
+        key="login_phone_input",
+        placeholder="+2376...",
+    )
 
     render_test_otp_panel(current_phone=phone)
     st.caption(t("otp_limit_info"))
@@ -1448,8 +1512,8 @@ def page_connexion() -> None:
         key="login_otp_input",
         placeholder=t("otp_placeholder"),
     )
-    name = st.text_input(t("name"), placeholder=t("optional"))
-    email = st.text_input(t("email"), placeholder=t("optional"))
+    name = st.text_input(t("name"), key="login_name_input", placeholder=t("optional"))
+    email = st.text_input(t("email"), key="login_email_input", placeholder=t("optional"))
 
     if st.button(t("login_button"), use_container_width=True):
         stored_otp = str(st.session_state.get("otp_code", "") or "").strip()
@@ -1498,6 +1562,7 @@ def page_connexion() -> None:
         clear_captcha_error("login")
         refresh_captcha("login")
         clear_login_test_otp()
+        clear_login_form_state()
 
         st.session_state["flash_message"] = t("login_success")
         schedule_menu_redirect(get_menu_key("create_order"))
@@ -1867,6 +1932,8 @@ def page_creer_commande() -> None:
         st.warning(t("need_login_create_order"))
         return
 
+    init_create_order_state()
+
     st.info(t("create_order_step_info"))
     st.info(t("create_order_info"))
 
@@ -1889,7 +1956,6 @@ def page_creer_commande() -> None:
     merchant_total_amount = st.number_input(
         t("merchant_total_displayed"),
         min_value=0.0,
-        value=0.0,
         step=1.0,
         key="create_order_amount",
     )
@@ -1897,7 +1963,7 @@ def page_creer_commande() -> None:
     merchant_currency = st.selectbox(
         t("merchant_currency"),
         ["XAF", "EUR"],
-        index=0,
+        index=0 if st.session_state.get("create_order_currency", "XAF") == "XAF" else 1,
         key="create_order_currency",
         help=t("merchant_currency_help"),
     )
@@ -1914,6 +1980,7 @@ def page_creer_commande() -> None:
 
         product_url = st.text_input(
             t("product_service_link"),
+            key="create_order_product_url",
             placeholder=t("product_link_placeholder"),
         )
 
@@ -1921,16 +1988,19 @@ def page_creer_commande() -> None:
 
         product_title = st.text_input(
             t("product_service_name"),
+            key="create_order_product_title",
             placeholder=t("product_service_name_placeholder"),
         )
 
         site_name = st.text_input(
             t("merchant_org"),
+            key="create_order_site_name",
             placeholder=t("merchant_org_placeholder"),
         )
 
         product_specs = st.text_area(
             t("details_useful"),
+            key="create_order_product_specs",
             placeholder=t("details_useful_placeholder"),
         )
 
@@ -1941,6 +2011,7 @@ def page_creer_commande() -> None:
         if requires_forwarder:
             delivery_address = st.text_area(
                 t("forwarder_address_label"),
+                key="create_order_delivery_address",
                 placeholder=t("forwarder_address_placeholder"),
                 help=t("forwarder_address_help"),
             )
@@ -1951,7 +2022,7 @@ def page_creer_commande() -> None:
         momo_provider = st.selectbox(
             t("momo_provider"),
             ["", "MTN", "Orange"],
-            index=0,
+            key="create_order_momo_provider",
         )
 
         if momo_provider.strip():
@@ -1961,7 +2032,10 @@ def page_creer_commande() -> None:
 
         st.caption(t("captcha_validated_above"))
 
-        client_ack = st.checkbox(t("client_ack"))
+        client_ack = st.checkbox(
+            t("client_ack"),
+            key="create_order_client_ack",
+        )
 
         submitted = st.form_submit_button(t("create_order_button"), use_container_width=True)
 
@@ -2047,10 +2121,11 @@ def page_creer_commande() -> None:
 
         clear_captcha_error("order")
         refresh_captcha("order")
+        reset_create_order_form_state()
         st.rerun()
 
     last_created_order = st.session_state.get("last_created_order")
-    if last_created_order:
+    if last_created_order and not has_create_order_draft_data():
         render_post_order_actions(last_created_order)
 
 
@@ -2166,6 +2241,7 @@ def main() -> None:
     init_language_state()
     init_navigation_state()
     init_otp_rate_limit_state()
+    init_create_order_state()
     restore_session_from_query_params()
     apply_pending_menu_redirect()
 
