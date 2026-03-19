@@ -1,11 +1,26 @@
-from data.database import get_conn
 from datetime import datetime
+
+from data.database import get_conn
+
+
+# ------------------------------
+# Nettoyage texte
+# ------------------------------
+def clean_text(value: str) -> str:
+    """
+    Nettoie une valeur texte.
+    Retourne une chaîne vide si None.
+    Supprime les espaces inutiles en début/fin.
+    """
+    if value is None:
+        return ""
+
+    return str(value).strip()
 
 
 # ------------------------------
 # Normalisation téléphone
 # ------------------------------
-
 def normalize_phone(phone: str) -> str:
     """
     Nettoie le numéro de téléphone.
@@ -14,7 +29,7 @@ def normalize_phone(phone: str) -> str:
     if not phone:
         return ""
 
-    phone = phone.strip()
+    phone = str(phone).strip()
     phone = phone.replace(" ", "")
     phone = phone.replace("-", "")
 
@@ -24,109 +39,136 @@ def normalize_phone(phone: str) -> str:
 # ------------------------------
 # Récupérer utilisateur
 # ------------------------------
-
 def get_user_by_phone(phone: str):
+    normalized_phone = normalize_phone(phone)
+
+    if not normalized_phone:
+        return None
 
     conn = get_conn()
     cur = conn.cursor()
 
-    normalized_phone = normalize_phone(phone)
-
-    cur.execute(
-        """
-        SELECT id, phone, name, email, created_at
-        FROM users
-        WHERE phone = %s
-        LIMIT 1
-        """,
-        (normalized_phone,)
-    )
-
-    user = cur.fetchone()
-
-    cur.close()
-    conn.close()
-
-    return user
+    try:
+        cur.execute(
+            """
+            SELECT id, phone, name, email, created_at
+            FROM users
+            WHERE phone = %s
+            LIMIT 1
+            """,
+            (normalized_phone,)
+        )
+        user = cur.fetchone()
+        return user
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ------------------------------
 # Créer utilisateur
 # ------------------------------
+def create_user(phone: str, name: str = "", email: str = "") -> int:
+    normalized_phone = normalize_phone(phone)
+    cleaned_name = clean_text(name)
+    cleaned_email = clean_text(email)
 
-def create_user(phone: str, name: str = "", email: str = ""):
+    if not normalized_phone:
+        raise ValueError("Le numéro de téléphone est obligatoire.")
 
     conn = get_conn()
     cur = conn.cursor()
 
-    normalized_phone = normalize_phone(phone)
-
-    cur.execute(
-        """
-        INSERT INTO users (phone, name, email, created_at)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id
-        """,
-        (
-            normalized_phone,
-            name,
-            email,
-            datetime.utcnow()
+    try:
+        cur.execute(
+            """
+            INSERT INTO users (phone, name, email, created_at)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                normalized_phone,
+                cleaned_name,
+                cleaned_email,
+                datetime.utcnow(),
+            )
         )
-    )
 
-    row = cur.fetchone()
+        row = cur.fetchone()
+        user_id = row["id"] if isinstance(row, dict) else row[0]
 
-    user_id = row["id"] if isinstance(row, dict) else row[0]
-
-    conn.commit()
-
-    cur.close()
-    conn.close()
-
-    return user_id
+        conn.commit()
+        return user_id
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ------------------------------
 # Mettre à jour utilisateur
 # ------------------------------
+def update_user(user_id: int, name: str = "", email: str = "") -> None:
+    """
+    Met à jour uniquement les champs fournis non vides.
+    N'écrase jamais le nom ou l'email existant avec une valeur vide.
+    """
+    cleaned_name = clean_text(name)
+    cleaned_email = clean_text(email)
 
-def update_user(user_id: int, name: str = "", email: str = ""):
+    fields = []
+    values = []
+
+    if cleaned_name:
+        fields.append("name = %s")
+        values.append(cleaned_name)
+
+    if cleaned_email:
+        fields.append("email = %s")
+        values.append(cleaned_email)
+
+    if not fields:
+        return
+
+    values.append(user_id)
 
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute(
+    try:
+        query = f"""
+            UPDATE users
+            SET {", ".join(fields)}
+            WHERE id = %s
         """
-        UPDATE users
-        SET name = %s,
-            email = %s
-        WHERE id = %s
-        """,
-        (name, email, user_id)
-    )
-
-    conn.commit()
-
-    cur.close()
-    conn.close()
+        cur.execute(query, tuple(values))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
 
 # ------------------------------
 # Créer ou mettre à jour
 # ------------------------------
-
 def upsert_user(phone: str, name: str = "", email: str = "") -> int:
     """
     Crée l'utilisateur s'il n'existe pas.
-    Sinon met à jour ses informations.
+    Sinon met à jour ses informations sans écraser
+    les valeurs existantes avec du vide.
     """
+    normalized_phone = normalize_phone(phone)
 
-    user = get_user_by_phone(phone)
+    if not normalized_phone:
+        raise ValueError("Le numéro de téléphone est obligatoire.")
+
+    cleaned_name = clean_text(name)
+    cleaned_email = clean_text(email)
+
+    user = get_user_by_phone(normalized_phone)
 
     if user:
         user_id = user["id"] if isinstance(user, dict) else user[0]
-        update_user(user_id, name, email)
+        update_user(user_id, cleaned_name, cleaned_email)
         return user_id
 
-    return create_user(phone, name, email)
+    return create_user(normalized_phone, cleaned_name, cleaned_email)
