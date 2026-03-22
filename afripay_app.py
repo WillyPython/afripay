@@ -1441,6 +1441,10 @@ def page_connexion() -> None:
     apply_login_form_reset_if_needed()
 
     st.title(t("page_login_title"))
+
+    if os.path.exists("assets/hero_banner.png"):
+        st.image("assets/hero_banner.png", width="stretch")
+
     consume_flash_message()
 
     st.markdown(t("page_login_intro_1"))
