@@ -112,15 +112,24 @@ def get_product_label(row, default="—"):
 
 
 def get_display_client_name(order, default="Client"):
-    user_name = str(safe_get(order, "user_name", "") or "").strip()
+    # 1. Nouveau champ (priorité)
+    client_name = str(safe_get(order, "client_name", "") or "")
+    if client_name:
+        return client_name
+
+    # 2. Ancien champ (fallback)
+    user_name = str(safe_get(order, "user_name", "") or "")
     if user_name:
         return user_name
 
-    user_phone = str(safe_get(order, "user_phone", "") or "").strip()
+    # 3. Téléphone (fallback intelligent)
+    user_phone = str(safe_get(order, "user_phone", "") or "")
     digits_only = "".join(ch for ch in user_phone if ch.isdigit())
 
     if len(digits_only) >= 4:
         return f"Client {digits_only[-4:]}"
+
+    return default
 
     return default
 
