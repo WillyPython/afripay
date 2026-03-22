@@ -5,7 +5,16 @@ def build_tracking_notification(order_row) -> str:
     merchant_tracking_url = order_row["merchant_tracking_url"] or ""
     merchant_order_number = order_row["merchant_order_number"] or "-"
     site_name = order_row["site_name"] or "-"
-    user_name = order_row["user_name"] or "Client"
+    phone = str(order_row.get("user_phone") or "")
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    phone_label = f"Client {digits[-4:]}" if len(digits) >= 4 else None
+
+    user_name = (
+    order_row.get("client_name")
+    or order_row.get("user_name")
+    or phone_label
+    or "Client"
+)
 
     lines = [
         "AfriPay",
