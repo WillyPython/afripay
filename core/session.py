@@ -1,10 +1,8 @@
-import os
 from typing import Any, Dict, Optional
 
 import streamlit as st
 
-
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "afripay")
+from services.admin_service import verify_admin_password
 
 
 SESSION_DEFAULTS: Dict[str, Any] = {
@@ -181,9 +179,11 @@ def is_otp_verified() -> bool:
 
 
 def login_admin(password: str) -> bool:
-    expected_password = os.getenv("ADMIN_PASSWORD", ADMIN_PASSWORD)
-
-    if (password or "").strip() == str(expected_password).strip():
+    """
+    Vérifie le mot de passe admin via la couche de service,
+    puis marque la session admin comme connectée.
+    """
+    if verify_admin_password(password):
         st.session_state["admin_logged_in"] = True
         return True
 

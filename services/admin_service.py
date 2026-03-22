@@ -1,21 +1,15 @@
-import os
+import hmac
 
-from data.database import get_conn
+from config.settings import get_admin_password
+from data.database import get_cursor
 
 
 DEFAULT_EUR_XAF_RATE = "655.957"
 
 
-def get_admin_password():
-    """
-    Lit le mot de passe admin directement depuis l'environnement Render.
-    """
-    return (os.getenv("ADMIN_PASSWORD") or "").strip()
-
-
 def admin_is_configured():
     """
-    Retourne True si ADMIN_PASSWORD est bien défini dans Render.
+    Retourne True si ADMIN_PASSWORD est bien défini dans l'environnement.
     """
     return get_admin_password() != ""
 
@@ -32,41 +26,34 @@ def verify_admin_password(password):
     if password is None:
         return False
 
-    return str(password).strip() == admin_password
+    provided_password = str(password).strip()
+    return hmac.compare_digest(provided_password, admin_password)
 
 
 def ensure_settings_table():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
+    """
+    Garde-fou léger pour s'assurer que la table settings existe.
+    """
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """
         )
-        """
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
 
 
 def get_setting(key, default=None):
     ensure_settings_table()
 
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        "SELECT value FROM settings WHERE key = %s LIMIT 1",
-        (str(key),),
-    )
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT value FROM settings WHERE key = %s LIMIT 1",
+            (str(key),),
+        )
+        row = cur.fetchone()
 
     if not row:
         return default
@@ -83,27 +70,21 @@ def get_setting(key, default=None):
 def set_setting(key, value):
     ensure_settings_table()
 
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO settings(key, value)
-        VALUES(%s, %s)
-        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value
-        """,
-        (str(key), str(value)),
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO settings(key, value)
+            VALUES(%s, %s)
+            ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value
+            """,
+            (str(key), str(value)),
+        )
 
 
 def ensure_defaults():
     """
     Initialise uniquement les réglages généraux nécessaires.
-    L'admin est désormais géré directement par ADMIN_PASSWORD dans Render.
+    L'admin est géré directement par ADMIN_PASSWORD dans l'environnement.
     """
     ensure_settings_table()
 
@@ -113,30 +94,25 @@ def ensure_defaults():
 
 
 def get_stats():
-    conn = get_conn()
-    cur = conn.cursor()
+    with get_cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS total_users FROM users")
+        users_row = cur.fetchone()
+        total_users = int(users_row["total_users"]) if users_row else 0
 
-    cur.execute("SELECT COUNT(*) AS total_users FROM users")
-    users_row = cur.fetchone()
-    total_users = int(users_row["total_users"]) if users_row else 0
-
-    cur.execute(
-        """
-        SELECT
-            COUNT(*) AS total_orders,
-            SUM(CASE WHEN order_status = 'PAYEE' THEN 1 ELSE 0 END) AS paid_orders,
-            SUM(CASE WHEN order_status = 'EN_COURS' THEN 1 ELSE 0 END) AS in_progress_orders,
-            SUM(CASE WHEN order_status = 'LIVREE' THEN 1 ELSE 0 END) AS delivered_orders,
-            SUM(CASE WHEN order_status = 'ANNULEE' THEN 1 ELSE 0 END) AS cancelled_orders,
-            COALESCE(SUM(total_xaf), 0) AS total_volume_xaf,
-            COALESCE(SUM(total_to_pay_eur), 0) AS total_volume_eur
-        FROM orders
-        """
-    )
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS total_orders,
+                SUM(CASE WHEN order_status = 'PAYEE' THEN 1 ELSE 0 END) AS paid_orders,
+                SUM(CASE WHEN order_status = 'EN_COURS' THEN 1 ELSE 0 END) AS in_progress_orders,
+                SUM(CASE WHEN order_status = 'LIVREE' THEN 1 ELSE 0 END) AS delivered_orders,
+                SUM(CASE WHEN order_status = 'ANNULEE' THEN 1 ELSE 0 END) AS cancelled_orders,
+                COALESCE(SUM(total_xaf), 0) AS total_volume_xaf,
+                COALESCE(SUM(total_to_pay_eur), 0) AS total_volume_eur
+            FROM orders
+            """
+        )
+        row = cur.fetchone()
 
     if not row:
         return {

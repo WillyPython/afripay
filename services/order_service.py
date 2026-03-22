@@ -1,7 +1,7 @@
 from datetime import datetime
 import secrets
 
-from data.database import get_conn
+from data.database import get_cursor
 from services.admin_service import get_setting, DEFAULT_EUR_XAF_RATE
 
 
@@ -61,6 +61,9 @@ PAYMENT_STATUS_LABELS = {
 }
 
 
+# ===============================
+# STATUTS MARCHAND / TRACKING
+# ===============================
 MERCHANT_STATUS_ORDER_PLACED = "Commande passée"
 MERCHANT_STATUS_PAYMENT_DONE = "Paiement effectué"
 MERCHANT_STATUS_CONFIRMED = "Confirmée par le marchand"
@@ -94,8 +97,12 @@ MAX_CUSTOMER_RATING = 5
 # GÉNÉRER UN CODE DE COMMANDE
 # ===============================
 def generate_order_code():
+    """
+    Génère un code commande plus robuste.
+    Format exemple : CMD-2026-482731
+    """
     year = datetime.utcnow().year
-    rand = secrets.randbelow(900) + 100
+    rand = secrets.randbelow(900000) + 100000
     return f"CMD-{year}-{rand}"
 
 
@@ -275,9 +282,6 @@ def create_order_for_user(
     total_xaf=None,
     total_to_pay_eur=None,
 ):
-    conn = get_conn()
-    cur = conn.cursor()
-
     order_code = generate_order_code()
 
     clean_site_name = _clean_text(site_name)
@@ -287,14 +291,17 @@ def create_order_for_user(
     clean_delivery_address = _clean_text(delivery_address)
     clean_momo_provider = _clean_optional_text(momo_provider)
     clean_country_code = _clean_text(country_code or "CM", "CM").upper()
-
     clean_merchant_currency = _clean_text(merchant_currency or "EUR", "EUR").upper()
 
     base_amounts = calculate_order_amounts(
         product_price_eur=product_price_eur,
         shipping_estimate_eur=shipping_estimate_eur,
-        seller_fee_xaf=seller_fee_xaf if seller_fee_xaf is not None else DEFAULT_SELLER_FEE_XAF,
-        afripay_fee_xaf=afripay_fee_xaf if afripay_fee_xaf is not None else DEFAULT_AFRIPAY_FEE_XAF,
+        seller_fee_xaf=(
+            seller_fee_xaf if seller_fee_xaf is not None else DEFAULT_SELLER_FEE_XAF
+        ),
+        afripay_fee_xaf=(
+            afripay_fee_xaf if afripay_fee_xaf is not None else DEFAULT_AFRIPAY_FEE_XAF
+        ),
     )
 
     final_seller_fee_xaf = (
@@ -336,93 +343,82 @@ def create_order_for_user(
     else:
         clean_merchant_total_amount = _to_float(merchant_total_amount, 0.0)
 
-    cur.execute(
-        """
-        INSERT INTO orders (
-            order_code,
-            user_id,
-            country_code,
-            site_name,
-            product_title,
-            product_name,
-            product_specs,
-            product_url,
-            product_price_eur,
-            shipping_estimate_eur,
-            total_to_pay_eur,
-            seller_fee_xaf,
-            afripay_fee_xaf,
-            total_xaf,
-            delivery_address,
-            momo_provider,
-            merchant_total_amount,
-            merchant_currency,
-            order_status,
-            payment_status,
-            created_at,
-            updated_at
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO orders (
+                order_code,
+                user_id,
+                country_code,
+                site_name,
+                product_title,
+                product_name,
+                product_specs,
+                product_url,
+                product_price_eur,
+                shipping_estimate_eur,
+                total_to_pay_eur,
+                seller_fee_xaf,
+                afripay_fee_xaf,
+                total_xaf,
+                delivery_address,
+                momo_provider,
+                merchant_total_amount,
+                merchant_currency,
+                order_status,
+                payment_status,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, NOW(), NOW()
+            )
+            RETURNING order_code
+            """,
+            (
+                order_code,
+                int(user_id),
+                clean_country_code,
+                clean_site_name,
+                clean_product_title,
+                clean_product_title,
+                clean_product_specs,
+                clean_product_url,
+                _to_float(product_price_eur, 0.0),
+                _to_float(shipping_estimate_eur, 0.0),
+                final_total_to_pay_eur,
+                final_seller_fee_xaf,
+                final_afripay_fee_xaf,
+                final_total_xaf,
+                clean_delivery_address,
+                clean_momo_provider,
+                clean_merchant_total_amount,
+                clean_merchant_currency,
+                ORDER_STATUS_CREATED,
+                PAYMENT_STATUS_PENDING,
+            ),
         )
-        VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, NOW(), NOW()
-        )
-        RETURNING order_code
-        """,
-        (
-            order_code,
-            int(user_id),
-            clean_country_code,
-            clean_site_name,
-            clean_product_title,
-            clean_product_title,
-            clean_product_specs,
-            clean_product_url,
-            _to_float(product_price_eur, 0.0),
-            _to_float(shipping_estimate_eur, 0.0),
-            final_total_to_pay_eur,
-            final_seller_fee_xaf,
-            final_afripay_fee_xaf,
-            final_total_xaf,
-            clean_delivery_address,
-            clean_momo_provider,
-            clean_merchant_total_amount,
-            clean_merchant_currency,
-            ORDER_STATUS_CREATED,
-            PAYMENT_STATUS_PENDING,
-        ),
-    )
+        row = cur.fetchone()
 
-    row = cur.fetchone()
-    result = row["order_code"] if row else order_code
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return result
+    return row["order_code"] if row else order_code
 
 
 # ===============================
 # LECTURE COMMANDE PAR ID
 # ===============================
 def get_order_by_id(order_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT *
-        FROM orders
-        WHERE id = %s
-        LIMIT 1
-        """,
-        (int(order_id),),
-    )
-
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM orders
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (int(order_id),),
+        )
+        row = cur.fetchone()
 
     return row
 
@@ -439,61 +435,49 @@ def update_merchant_info(
     merchant_status="",
     merchant_notes="",
 ):
-    conn = get_conn()
-    cur = conn.cursor()
-
     clean_purchase_date = _clean_optional_text(merchant_purchase_date)
 
-    cur.execute(
-        """
-        UPDATE orders
-        SET
-            merchant_order_number = %s,
-            merchant_confirmation_url = %s,
-            merchant_tracking_url = %s,
-            merchant_purchase_date = %s,
-            merchant_status = %s,
-            merchant_notes = %s,
-            updated_at = NOW()
-        WHERE id = %s
-        """,
-        (
-            _clean_text(merchant_order_number),
-            _clean_text(merchant_confirmation_url),
-            _clean_text(merchant_tracking_url),
-            clean_purchase_date,
-            normalize_merchant_status(merchant_status),
-            _clean_text(merchant_notes),
-            int(order_id),
-        ),
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE orders
+            SET
+                merchant_order_number = %s,
+                merchant_confirmation_url = %s,
+                merchant_tracking_url = %s,
+                merchant_purchase_date = %s,
+                merchant_status = %s,
+                merchant_notes = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (
+                _clean_text(merchant_order_number),
+                _clean_text(merchant_confirmation_url),
+                _clean_text(merchant_tracking_url),
+                clean_purchase_date,
+                normalize_merchant_status(merchant_status),
+                _clean_text(merchant_notes),
+                int(order_id),
+            ),
+        )
 
 
 # ===============================
 # LISTE COMMANDES UTILISATEUR
 # ===============================
 def list_orders_for_user(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT *
-        FROM orders
-        WHERE user_id = %s
-        ORDER BY created_at DESC
-        """,
-        (int(user_id),),
-    )
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM orders
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (int(user_id),),
+        )
+        rows = cur.fetchall()
 
     return rows
 
@@ -502,23 +486,17 @@ def list_orders_for_user(user_id):
 # RECHERCHE COMMANDE PAR CODE
 # ===============================
 def get_order_by_code(order_code):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT *
-        FROM orders
-        WHERE order_code = %s
-        LIMIT 1
-        """,
-        (_clean_text(order_code),),
-    )
-
-    row = cur.fetchone()
-
-    cur.close()
-    conn.close()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT *
+            FROM orders
+            WHERE order_code = %s
+            LIMIT 1
+            """,
+            (_clean_text(order_code),),
+        )
+        row = cur.fetchone()
 
     return row
 
@@ -544,154 +522,122 @@ def update_order_status(order_id, order_status=None, payment_status=None):
     fields.append("updated_at = NOW()")
     values.append(int(order_id))
 
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        f"""
-        UPDATE orders
-        SET {", ".join(fields)}
-        WHERE id = %s
-        """,
-        tuple(values),
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            f"""
+            UPDATE orders
+            SET {", ".join(fields)}
+            WHERE id = %s
+            """,
+            tuple(values),
+        )
 
 
 # ===============================
 # ACTIONS FINTECH SUR LE PAIEMENT
 # ===============================
 def mark_payment_proof_sent(order_code, provider=None):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE orders
-        SET
-            payment_status = %s,
-            payment_provider = COALESCE(%s, payment_provider, momo_provider),
-            proof_sent_at = NOW(),
-            updated_at = NOW()
-        WHERE order_code = %s
-          AND payment_status = %s
-        """,
-        (
-            PAYMENT_STATUS_PROOF_SENT,
-            _clean_optional_text(provider),
-            _clean_text(order_code),
-            PAYMENT_STATUS_PENDING,
-        ),
-    )
-
-    updated = cur.rowcount > 0
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE orders
+            SET
+                payment_status = %s,
+                payment_provider = COALESCE(%s, payment_provider, momo_provider),
+                proof_sent_at = NOW(),
+                updated_at = NOW()
+            WHERE order_code = %s
+              AND payment_status = %s
+            """,
+            (
+                PAYMENT_STATUS_PROOF_SENT,
+                _clean_optional_text(provider),
+                _clean_text(order_code),
+                PAYMENT_STATUS_PENDING,
+            ),
+        )
+        updated = cur.rowcount > 0
 
     return updated
 
 
 def mark_payment_proof_received(order_code, admin_note=""):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE orders
-        SET
-            payment_status = %s,
-            proof_received_at = NOW(),
-            payment_admin_note = %s,
-            updated_at = NOW()
-        WHERE order_code = %s
-          AND payment_status IN (%s, %s)
-        """,
-        (
-            PAYMENT_STATUS_PROOF_RECEIVED,
-            _clean_text(admin_note),
-            _clean_text(order_code),
-            PAYMENT_STATUS_PROOF_SENT,
-            PAYMENT_STATUS_PENDING,
-        ),
-    )
-
-    updated = cur.rowcount > 0
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE orders
+            SET
+                payment_status = %s,
+                proof_received_at = NOW(),
+                payment_admin_note = %s,
+                updated_at = NOW()
+            WHERE order_code = %s
+              AND payment_status IN (%s, %s)
+            """,
+            (
+                PAYMENT_STATUS_PROOF_RECEIVED,
+                _clean_text(admin_note),
+                _clean_text(order_code),
+                PAYMENT_STATUS_PROOF_SENT,
+                PAYMENT_STATUS_PENDING,
+            ),
+        )
+        updated = cur.rowcount > 0
 
     return updated
 
 
 def confirm_payment(order_code, admin_note=""):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE orders
-        SET
-            payment_status = %s,
-            payment_confirmed_at = NOW(),
-            payment_admin_note = %s,
-            updated_at = NOW()
-        WHERE order_code = %s
-          AND payment_status IN (%s, %s)
-        """,
-        (
-            PAYMENT_STATUS_CONFIRMED,
-            _clean_text(admin_note),
-            _clean_text(order_code),
-            PAYMENT_STATUS_PROOF_RECEIVED,
-            PAYMENT_STATUS_PROOF_SENT,
-        ),
-    )
-
-    updated = cur.rowcount > 0
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE orders
+            SET
+                payment_status = %s,
+                order_status = %s,
+                payment_confirmed_at = NOW(),
+                payment_admin_note = %s,
+                updated_at = NOW()
+            WHERE order_code = %s
+              AND payment_status IN (%s, %s)
+            """,
+            (
+                PAYMENT_STATUS_CONFIRMED,
+                ORDER_STATUS_PAID,
+                _clean_text(admin_note),
+                _clean_text(order_code),
+                PAYMENT_STATUS_PROOF_RECEIVED,
+                PAYMENT_STATUS_PROOF_SENT,
+            ),
+        )
+        updated = cur.rowcount > 0
 
     return updated
 
 
 def reject_payment(order_code, admin_note=""):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE orders
-        SET
-            payment_status = %s,
-            payment_rejected_at = NOW(),
-            payment_admin_note = %s,
-            updated_at = NOW()
-        WHERE order_code = %s
-          AND payment_status IN (%s, %s, %s)
-        """,
-        (
-            PAYMENT_STATUS_REJECTED,
-            _clean_text(admin_note),
-            _clean_text(order_code),
-            PAYMENT_STATUS_PENDING,
-            PAYMENT_STATUS_PROOF_SENT,
-            PAYMENT_STATUS_PROOF_RECEIVED,
-        ),
-    )
-
-    updated = cur.rowcount > 0
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE orders
+            SET
+                payment_status = %s,
+                payment_rejected_at = NOW(),
+                payment_admin_note = %s,
+                updated_at = NOW()
+            WHERE order_code = %s
+              AND payment_status IN (%s, %s, %s)
+            """,
+            (
+                PAYMENT_STATUS_REJECTED,
+                _clean_text(admin_note),
+                _clean_text(order_code),
+                PAYMENT_STATUS_PENDING,
+                PAYMENT_STATUS_PROOF_SENT,
+                PAYMENT_STATUS_PROOF_RECEIVED,
+            ),
+        )
+        updated = cur.rowcount > 0
 
     return updated
 
@@ -700,25 +646,19 @@ def reject_payment(order_code, admin_note=""):
 # LISTE COMPLÈTE (ADMIN)
 # ===============================
 def list_orders_all():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT
-            o.*,
-            u.name AS user_name,
-            u.phone AS user_phone,
-            u.email AS user_email
-        FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
-        ORDER BY o.created_at DESC
-        """
-    )
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                o.*,
+                u.name AS user_name,
+                u.phone AS user_phone,
+                u.email AS user_email
+            FROM orders o
+            LEFT JOIN users u ON o.user_id = u.id
+            ORDER BY o.created_at DESC
+            """
+        )
+        rows = cur.fetchall()
 
     return rows

@@ -5,24 +5,31 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# =========================
+# CONFIG / CONNEXION
+# =========================
+def get_database_url() -> str:
+    """
+    Récupère DATABASE_URL depuis les variables d'environnement.
+    """
+    database_url = os.getenv("DATABASE_URL", "").strip()
+
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL est introuvable dans les variables d'environnement."
+        )
+
+    return database_url
 
 
-# =========================
-# CONNEXION
-# =========================
 def get_connection():
     """
     Ouvre une connexion PostgreSQL.
     """
-    if not DATABASE_URL:
-        raise ValueError(
-            "DATABASE_URL est introuvable dans les variables d'environnement."
-        )
-
     return psycopg2.connect(
-        DATABASE_URL,
+        get_database_url(),
         cursor_factory=RealDictCursor,
+        connect_timeout=10,
     )
 
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from data.database import get_conn
+from data.database import get_cursor
 
 
 # ------------------------------
@@ -32,6 +32,9 @@ def normalize_phone(phone: str) -> str:
     phone = str(phone).strip()
     phone = phone.replace(" ", "")
     phone = phone.replace("-", "")
+    phone = phone.replace(".", "")
+    phone = phone.replace("(", "")
+    phone = phone.replace(")", "")
 
     return phone
 
@@ -45,10 +48,7 @@ def get_user_by_phone(phone: str):
     if not normalized_phone:
         return None
 
-    conn = get_conn()
-    cur = conn.cursor()
-
-    try:
+    with get_cursor() as cur:
         cur.execute(
             """
             SELECT id, phone, name, email, created_at
@@ -56,13 +56,11 @@ def get_user_by_phone(phone: str):
             WHERE phone = %s
             LIMIT 1
             """,
-            (normalized_phone,)
+            (normalized_phone,),
         )
         user = cur.fetchone()
-        return user
-    finally:
-        cur.close()
-        conn.close()
+
+    return user
 
 
 # ------------------------------
@@ -76,10 +74,7 @@ def create_user(phone: str, name: str = "", email: str = "") -> int:
     if not normalized_phone:
         raise ValueError("Le numéro de téléphone est obligatoire.")
 
-    conn = get_conn()
-    cur = conn.cursor()
-
-    try:
+    with get_cursor(commit=True) as cur:
         cur.execute(
             """
             INSERT INTO users (phone, name, email, created_at)
@@ -91,17 +86,11 @@ def create_user(phone: str, name: str = "", email: str = "") -> int:
                 cleaned_name,
                 cleaned_email,
                 datetime.utcnow(),
-            )
+            ),
         )
-
         row = cur.fetchone()
-        user_id = row["id"] if isinstance(row, dict) else row[0]
 
-        conn.commit()
-        return user_id
-    finally:
-        cur.close()
-        conn.close()
+    return row["id"] if row else None
 
 
 # ------------------------------
@@ -131,20 +120,14 @@ def update_user(user_id: int, name: str = "", email: str = "") -> None:
 
     values.append(user_id)
 
-    conn = get_conn()
-    cur = conn.cursor()
+    query = f"""
+        UPDATE users
+        SET {", ".join(fields)}
+        WHERE id = %s
+    """
 
-    try:
-        query = f"""
-            UPDATE users
-            SET {", ".join(fields)}
-            WHERE id = %s
-        """
+    with get_cursor(commit=True) as cur:
         cur.execute(query, tuple(values))
-        conn.commit()
-    finally:
-        cur.close()
-        conn.close()
 
 
 # ------------------------------
