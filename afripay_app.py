@@ -6,6 +6,19 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
+st.set_page_config(
+    page_title="AfriPay Afrika",
+    page_icon="🌍",
+    layout="wide",
+)
+
+st.markdown(
+    """
+    <meta name="description" content="Payez vos achats internationaux depuis l'Afrique avec Mobile Money grâce à AfriPay Afrika.">
+    """,
+    unsafe_allow_html=True,
+)
+
 from config.settings import APP_TITLE
 from data.database import init_db
 from core.session import (
