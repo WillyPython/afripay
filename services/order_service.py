@@ -197,7 +197,10 @@ def build_promoter_whatsapp_message(order):
     if not order:
         return ""
 
-    customer_name = _clean_text(order.get("user_name"), "Cher client")
+    customer_name = _clean_text(
+        order.get("client_name") or order.get("user_name"),
+        "Cher client",
+    )
     order_code = _clean_text(order.get("order_code"), "-")
     site_name = _clean_text(order.get("site_name"), "votre marchand")
     product_title = _clean_text(
@@ -266,6 +269,9 @@ def calculate_order_amounts(
 # ===============================
 def create_order_for_user(
     user_id,
+    client_name,
+    client_phone,
+    client_email,
     site_name,
     product_url,
     product_title,
@@ -283,6 +289,10 @@ def create_order_for_user(
     total_to_pay_eur=None,
 ):
     order_code = generate_order_code()
+
+    clean_client_name = _clean_text(client_name)
+    clean_client_phone = _clean_text(client_phone)
+    clean_client_email = _clean_text(client_email)
 
     clean_site_name = _clean_text(site_name)
     clean_product_url = _clean_text(product_url)
@@ -349,6 +359,9 @@ def create_order_for_user(
             INSERT INTO orders (
                 order_code,
                 user_id,
+                client_name,
+                client_phone,
+                client_email,
                 country_code,
                 site_name,
                 product_title,
@@ -372,13 +385,16 @@ def create_order_for_user(
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, NOW(), NOW()
+                %s, %s, %s, %s, %s, NOW(), NOW()
             )
             RETURNING order_code
             """,
             (
                 order_code,
                 int(user_id),
+                clean_client_name,
+                clean_client_phone,
+                clean_client_email,
                 clean_country_code,
                 clean_site_name,
                 clean_product_title,
