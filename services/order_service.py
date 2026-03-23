@@ -136,14 +136,14 @@ def _clean_optional_text(value):
 
 def _round_xaf(value):
     """
-    Arrondi au franc supérieur.
+    Arrondi au multiple de 5 le plus proche (règle AfriPay).
     Exemple :
-    95939.01 -> 95940
-    95939.00 -> 95939
+    13801 -> 13800
+    13819 -> 13820
+    13804.68 -> 13805
     """
     value = _to_float(value, 0.0)
-    integer = int(value)
-    return integer if value == integer else integer + 1
+    return int(round(value / 5.0) * 5)
 
 
 def normalize_order_status(value, default=ORDER_STATUS_CREATED):

@@ -2111,6 +2111,11 @@ def page_creer_commande() -> None:
 
         order_code = create_order_for_user(
             user_id=int(st.session_state["user_id"]),
+            
+            client_name=st.session_state.get("user_name", "").strip(),
+            client_phone=st.session_state.get("user_phone", "").strip(),
+            client_email=st.session_state.get("user_email", "").strip(),
+            
             site_name=site_name.strip(),
             product_url=product_url.strip(),
             product_title=product_title.strip(),
