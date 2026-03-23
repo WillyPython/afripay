@@ -1,8 +1,11 @@
 import os
 import secrets
 import urllib.parse
+
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+
+from services.order_service import _round_xaf
 
 import streamlit as st
 
@@ -926,7 +929,7 @@ def compute_payment_preview(merchant_total_amount, merchant_currency):
 
     afripay_fee_xaf, afripay_fee_eur = calculate_afripay_fee(merchant_eur)
 
-    total_to_pay_xaf = merchant_xaf + afripay_fee_xaf
+    total_to_pay_xaf = _round_xaf(merchant_xaf + afripay_fee_xaf)
     total_to_pay_eur = merchant_eur + afripay_fee_eur
 
     return {
