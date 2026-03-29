@@ -9,6 +9,66 @@ from services.order_service import _round_xaf
 
 import streamlit as st
 
+st.markdown("""
+<style>
+
+/* Boutons */
+.stButton>button {
+    background-color: #1ABC9C;
+    color: white;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-weight: 600;
+    border: none;
+}
+
+.stButton>button:hover {
+    background-color: #16A085;
+}
+
+/* Containers */
+.block-container {
+    padding-top: 2rem;
+}
+
+/* Sidebar fond */
+section[data-testid="stSidebar"] {
+    background-color: #0F172A;
+}
+
+/* Texte sidebar */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: white !important;
+}
+
+/* Widget selectbox / combobox dans la sidebar */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: white !important;
+    color: black !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+    color: black !important;
+}
+
+/* Valeur affichée dans le champ */
+section[data-testid="stSidebar"] div[data-baseweb="select"] input {
+    color: black !important;
+    -webkit-text-fill-color: black !important;
+}
+
+/* Placeholder éventuel */
+section[data-testid="stSidebar"] div[data-baseweb="select"] * {
+    color: black !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.set_page_config(
     page_title="AfriPay Afrika",
     page_icon="🌍",
@@ -694,12 +754,8 @@ def xaf_to_eur(value_xaf):
 
 
 def safe_get(row, key, default=""):
-    try:
-        value = row[key]
-        return value if value not in (None, "") else default
-    except Exception:
-        return default
-
+    value = row.get(key, default)
+    return value if value not in (None, "") else default
 
 def get_product_label(row, default="—"):
     value = safe_get(row, "product_title", "")
@@ -1458,9 +1514,16 @@ def page_connexion() -> None:
 
     st.title(t("page_login_title"))
 
-    if os.path.exists("assets/hero_banner.png"):
-        st.image("assets/hero_banner.png", width="stretch")
+    lang = st.session_state.get("language", "fr")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
+    if lang == "fr":
+        banner_path = os.path.join(base_dir, "assets", "hero_banner_fr.png")
+    else:
+        banner_path = os.path.join(base_dir, "assets", "hero_banner_en.png")
+
+    if os.path.exists(banner_path):
+        st.image(banner_path, width="stretch")
     consume_flash_message()
 
     st.markdown(t("page_login_intro_1"))
@@ -1484,7 +1547,7 @@ def page_connexion() -> None:
 
     captcha_input = render_captcha_block("login", title=t("captcha_title"), allow_refresh=True)
 
-    if st.button(t("send_otp"), use_container_width=True):
+    if st.button(t("send_otp"), width="stretch"):
         clean_phone = str(phone or "").strip()
 
         if not clean_phone:
@@ -1545,7 +1608,7 @@ def page_connexion() -> None:
     name = st.text_input(t("name"), key="login_name_input", placeholder=t("optional"))
     email = st.text_input(t("email"), key="login_email_input", placeholder=t("optional"))
 
-    if st.button(t("login_button"), use_container_width=True):
+    if st.button(t("login_button"), width="stretch"):
         stored_otp = str(st.session_state.get("otp_code", "") or "").strip()
         stored_phone = str(st.session_state.get("otp_phone", "") or "").strip()
         clean_phone = str(phone or "").strip()
@@ -1675,7 +1738,7 @@ def page_dashboard_client() -> None:
                 "Statut": list(status_counter.keys()),
                 "Commandes": list(status_counter.values()),
             }
-            st.bar_chart(status_data, x="Statut", y="Commandes", use_container_width=True)
+            st.bar_chart(status_data, x="Statut", y="Commandes", width="stretch")
         else:
             st.info(t("status_chart_empty"))
 
@@ -1687,7 +1750,7 @@ def page_dashboard_client() -> None:
                 "Mois": [month_label(datetime.strptime(k, "%Y-%m")) for k in sorted_keys],
                 "Commandes": [monthly_orders[k] for k in sorted_keys],
             }
-            st.line_chart(evolution_data, x="Mois", y="Commandes", use_container_width=True)
+            st.line_chart(evolution_data, x="Mois", y="Commandes", width="stretch")
         else:
             st.info(t("monthly_evolution_empty"))
 
@@ -1698,7 +1761,7 @@ def page_dashboard_client() -> None:
             "Mois": [month_label(datetime.strptime(k, "%Y-%m")) for k in sorted_keys],
             "Montant_XAF": [monthly_volume[k] for k in sorted_keys],
         }
-        st.area_chart(volume_data, x="Mois", y="Montant_XAF", use_container_width=True)
+        st.area_chart(volume_data, x="Mois", y="Montant_XAF", width="stretch")
     else:
         st.info(t("monthly_volume_empty"))
 
@@ -1890,7 +1953,7 @@ def render_post_order_actions(order_data: dict) -> None:
     st.link_button(
         t("share_whatsapp"),
         whatsapp_url,
-        use_container_width=True,
+        width="stretch",
     )
 
     with st.expander(t("see_whatsapp_message")):
@@ -1912,7 +1975,7 @@ def render_post_order_actions(order_data: dict) -> None:
     if st.button(
         t("prepare_payment_proof"),
         key=f"prepare_proof_{order_code}",
-        use_container_width=True,
+        width="stretch",
     ):
         updated = mark_payment_proof_sent(order_code, momo_provider)
         if updated:
@@ -1923,7 +1986,7 @@ def render_post_order_actions(order_data: dict) -> None:
     st.link_button(
         t("send_payment_proof_whatsapp"),
         payment_proof_url,
-        use_container_width=True,
+        width="stretch",
     )
 
     with st.expander(t("see_payment_proof_message")):
@@ -1937,7 +2000,7 @@ def render_post_order_actions(order_data: dict) -> None:
     st.link_button(
         t("referral_button"),
         referral_url,
-        use_container_width=True,
+        width="stretch",
     )
 
     with st.expander(t("see_referral_message")):
@@ -2058,7 +2121,7 @@ def page_creer_commande() -> None:
             key="create_order_client_ack",
         )
 
-        submitted = st.form_submit_button(t("create_order_button"), use_container_width=True)
+        submitted = st.form_submit_button(t("create_order_button"), width="stretch")
 
     if submitted:
         captcha_status = get_captcha_status("order", captcha_input)
@@ -2247,11 +2310,11 @@ def page_admin() -> None:
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button(t("open_admin_dashboard"), use_container_width=True):
+        if st.button(t("open_admin_dashboard"), width="stretch"):
             st.switch_page("pages/admin_dashboard.py")
 
     with col2:
-        if st.button(t("logout_admin"), use_container_width=True):
+        if st.button(t("logout_admin"), width="stretch"):
             logout_admin()
             st.rerun()
 
