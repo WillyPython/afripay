@@ -265,7 +265,13 @@ TRANSLATIONS = {
         "language": "Langue",
         "page_login_title": "Connexion",
         "page_login_intro_1": """
-### 🌍 Que pouvez-vous payer avec AfriPay ?
+        "how_it_works_title": "⚙️ Comment ça marche ?",
+        "how_it_works_step_1": "1️⃣ Vous envoyez le lien du produit (Amazon, Temu, etc.)",
+        "how_it_works_step_2": "2️⃣ AfriDIGID se charge de l’achat pour vous",
+        "how_it_works_step_3": "3️⃣ Vous suivez votre commande directement dans AfriPay",
+        "how_it_works_note": "ℹ️ Le transport, le dédouanement et la livraison sont assurés par votre transitaire.\nLe renseignement du transitaire est obligatoire pour valider votre commande.",
+
+"what_can_you_buy_title": "🌍 Que pouvez-vous acheter avec AfriPay ?",        
 
 AfriPay permet de payer vos **achats et services internationaux** avec Mobile Money depuis l’Afrique.
 
@@ -502,7 +508,7 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "whatsapp_origin_currency": "Devise d'origine du marchand : {currency}",
         "whatsapp_product_link_title": "Lien du produit / service :",
         "whatsapp_track_order": "Vous pouvez suivre votre commande directement dans AfriPay.",
-        "whatsapp_marketing_1": "🚀 AfriPay permet de payer vos achats et services internationaux depuis l’Afrique avec Mobile Money.",
+        "whatsapp_marketing_1": "🚀 AfriPay permet d'acheter vos achats et services internationaux depuis l’Afrique avec Mobile Money.",
         "whatsapp_marketing_2": "Exemples : Amazon, Temu, certifications, universités, logiciels, abonnements, services en ligne.",
         "whatsapp_marketing_3": "💡 Essayez AfriPay pour vos prochains paiements internationaux :",
         "whatsapp_brand": "AfriPay Afrika",
@@ -537,7 +543,13 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "language": "Language",
         "page_login_title": "Login",
         "page_login_intro_1": """
-### 🌍 What can you pay with AfriPay?
+        "how_it_works_title": "⚙️ How does it work?",
+        "how_it_works_step_1": "1️⃣ You send the product link (Amazon, Temu, etc.)",
+        "how_it_works_step_2": "2️⃣ AfriDIGID handles the purchase for you",
+        "how_it_works_step_3": "3️⃣ You track your order directly in AfriPay",
+        "how_it_works_note": "ℹ️ Transport, customs clearance and delivery are handled by your freight forwarder.\nFreight forwarder information is required to validate your order.",
+
+"what_can_you_buy_title": "🌍 What can you buy with AfriPay?",       
 
 AfriPay helps you pay for **international purchases and services** with Mobile Money from Africa.
 
@@ -774,7 +786,7 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "whatsapp_origin_currency": "Original merchant currency: {currency}",
         "whatsapp_product_link_title": "Product / service link:",
         "whatsapp_track_order": "You can track your order directly in AfriPay.",
-        "whatsapp_marketing_1": "🚀 AfriPay helps you pay for your international purchases and services from Africa with Mobile Money.",
+        "whatsapp_marketing_1": "🚀 AfriPay allows you to buy international products and services with ease.",
         "whatsapp_marketing_2": "Examples: Amazon, Temu, certifications, universities, software, subscriptions, online services.",
         "whatsapp_marketing_3": "💡 Try AfriPay for your next international payments:",
         "whatsapp_brand": "AfriPay Afrika",
