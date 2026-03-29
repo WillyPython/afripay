@@ -9,65 +9,7 @@ from services.order_service import _round_xaf
 
 import streamlit as st
 
-st.markdown("""
-<style>
 
-/* Boutons */
-.stButton>button {
-    background-color: #1ABC9C;
-    color: white;
-    border-radius: 10px;
-    padding: 10px 20px;
-    font-weight: 600;
-    border: none;
-}
-
-.stButton>button:hover {
-    background-color: #16A085;
-}
-
-/* Containers */
-.block-container {
-    padding-top: 2rem;
-}
-
-/* Sidebar fond */
-section[data-testid="stSidebar"] {
-    background-color: #0F172A;
-}
-
-/* Texte sidebar */
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 {
-    color: white !important;
-}
-
-/* Widget selectbox / combobox dans la sidebar */
-section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-    background-color: white !important;
-    color: black !important;
-}
-
-section[data-testid="stSidebar"] div[data-baseweb="select"] span {
-    color: black !important;
-}
-
-/* Valeur affichée dans le champ */
-section[data-testid="stSidebar"] div[data-baseweb="select"] input {
-    color: black !important;
-    -webkit-text-fill-color: black !important;
-}
-
-/* Placeholder éventuel */
-section[data-testid="stSidebar"] div[data-baseweb="select"] * {
-    color: black !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
 
 st.set_page_config(
     page_title="AfriPay Afrika",
@@ -75,6 +17,154 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+
+/* Palette AfriPay */
+:root {
+    --afripay-green: #1ABC9C;
+    --afripay-green-hover: #17A589;
+    --afripay-sidebar-bg: #0F172A;
+    --afripay-white: #FFFFFF;
+    --afripay-black: #111827;
+}
+
+/* Boutons */
+.stButton > button {
+    background-color: var(--afripay-green);
+    color: var(--afripay-white);
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: 600;
+    border: none;
+    transition: all 0.2s ease;
+}
+
+.stButton > button:hover {
+    background-color: var(--afripay-green-hover);
+    color: var(--afripay-white);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(16,185,129,0.25);
+}
+            
+/* Container */
+.block-container {
+    padding-top: 2rem;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: var(--afripay-sidebar-bg);
+}
+
+/* Texte sidebar */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] span {
+    color: var(--afripay-white) !important;
+}
+
+/* Selectbox sidebar */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: var(--afripay-white) !important;
+    color: var(--afripay-black) !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] input,
+section[data-testid="stSidebar"] div[data-baseweb="select"] span {
+    color: var(--afripay-black) !important;
+    -webkit-text-fill-color: var(--afripay-black) !important;
+}
+/* Fond principal plus doux */
+[data-testid="stAppViewContainer"] {
+    background-color: #F4F7FB !important;
+}
+
+/* Zone centrale */
+.main .block-container {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-radius: 20px;
+    padding: 2rem 2rem 3rem 2rem !important;
+    margin: 2rem auto !important;
+    max-width: 900px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.10);
+}
+/* Fond global légèrement plus neutre */
+[data-testid="stAppViewContainer"] {
+    background-color: #EEF2F7 !important;
+}
+/* Inputs plus nets */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+div[data-baseweb="input"] input {
+    background-color: #FFFFFF !important;
+    color: #111827 !important;
+    border: 1px solid #CBD5E1 !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+}
+
+/* Focus input */
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stNumberInput input:focus,
+div[data-baseweb="input"] input:focus {
+    border: 1px solid #1ABC9C !important;
+    box-shadow: 0 0 0 1px #1ABC9C !important;
+}
+
+/* Titres */
+h1, h2, h3 {
+    color: #0F172A !important;
+}
+
+/* Texte courant */
+p, label, div {
+    color: #1F2937;
+}
+/* Alertes plus premium */
+
+[data-testid="stAlert"] {
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+    font-size: 15px !important;
+    font-weight: 500;
+}
+
+/* INFO (bleu) */
+[data-testid="stAlert"] div[role="alert"] {
+    background-color: #E8F1FF !important;
+    color: #1E293B !important;
+}
+
+/* WARNING (jaune) */
+[data-testid="stAlert"][class*="warning"] div {
+    background-color: #FFF7E6 !important;
+    color: #78350F !important;
+}
+
+/* SUCCESS (vert futur) */
+[data-testid="stAlert"][class*="success"] div {
+    background-color: #ECFDF5 !important;
+    color: #065F46 !important;
+}
+/* Cartes glass (messages, captcha, info) */
+.stAlert, 
+div[data-testid="stNotification"] {
+    background: rgba(255,255,255,0.65) !important;
+    backdrop-filter: blur(8px);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+</style>
+""", unsafe_allow_html=True)
 st.markdown(
     """
     <meta name="description" content="Payez vos achats internationaux depuis l'Afrique avec Mobile Money grâce à AfriPay Afrika.">
