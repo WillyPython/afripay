@@ -133,18 +133,13 @@ def _clean_optional_text(value):
     cleaned = _clean_text(value, "")
     return cleaned if cleaned else None
 
-
 def _round_xaf(value):
     """
     Arrondi au multiple de 5 le plus proche (règle AfriPay).
-    Exemple :
-    13801 -> 13800
-    13819 -> 13820
-    13804.68 -> 13805
+    Toujours arrondi classique (pas banker rounding).
     """
     value = _to_float(value, 0.0)
-    return int(round(value / 5.0) * 5)
-
+    return int((value + 2.5) // 5 * 5)
 
 def normalize_order_status(value, default=ORDER_STATUS_CREATED):
     cleaned = _clean_text(value, default).upper()
