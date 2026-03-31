@@ -67,6 +67,17 @@ section[data-testid="stSidebar"] span {
     color: var(--afripay-white) !important;
 }
 
+/* Correction visibilité texte bloc sidebar (Connected / Not connected) */
+section[data-testid="stSidebar"] [data-testid="stAlert"] {
+    background-color: var(--afripay-white) !important;
+    color: #0F172A !important;
+}
+
+section[data-testid="stSidebar"] [data-testid="stAlert"] * {
+    color: #0F172A !important;
+    -webkit-text-fill-color: #0F172A !important;
+}            
+                       
 /* Selectbox sidebar */
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     background-color: var(--afripay-white) !important;
@@ -165,9 +176,16 @@ div[data-testid="stNotification"] {
 }
 </style>
 """, unsafe_allow_html=True)
+lang = st.session_state.get("language", "fr")
+
+if lang == "en":
+    meta_description = "AfriPay Afrika is an international purchase service provided by AfriDIGID, enabling users to order products and services from Africa easily. Payments are made via Mobile Money to AfriDIGID’s merchant accounts or its partners."
+else:
+    meta_description = "AfriPay Afrika est un service d’achat international proposé par AfriDIGID, permettant de commander des produits et services depuis l’Afrique en toute simplicité. Le règlement s’effectue via Mobile Money sur les comptes marchands d’AfriDIGID ou de ses partenaires."
+
 st.markdown(
-    """
-    <meta name="description" content="Payez vos achats internationaux depuis l'Afrique avec Mobile Money grâce à AfriPay Afrika.">
+    f"""
+    <meta name="description" content="{meta_description}">
     """,
     unsafe_allow_html=True,
 )
@@ -265,19 +283,13 @@ TRANSLATIONS = {
         "language": "Langue",
         "page_login_title": "Connexion",
         "page_login_intro_1": """
-        "how_it_works_title": "⚙️ Comment ça marche ?",
-        "how_it_works_step_1": "1️⃣ Vous envoyez le lien du produit (Amazon, Temu, etc.)",
-        "how_it_works_step_2": "2️⃣ AfriDIGID se charge de l’achat pour vous",
-        "how_it_works_step_3": "3️⃣ Vous suivez votre commande directement dans AfriPay",
-        "how_it_works_note": "ℹ️ Le transport, le dédouanement et la livraison sont assurés par votre transitaire.\nLe renseignement du transitaire est obligatoire pour valider votre commande.",
+### 🌍 Que pouvez-vous commander avec AfriPay ?
 
-"what_can_you_buy_title": "🌍 Que pouvez-vous acheter avec AfriPay ?",        
-
-AfriPay permet de payer vos **achats et services internationaux** avec Mobile Money depuis l’Afrique.
+AfriPay vous aide à commander des **produits et services internationaux** depuis l’Afrique, via un processus simple et guidé avec le Mobile Money.
 
 **Exemples :**
 
-• 🛒 Produits : Amazon, Temu, AliExpress  
+• 🛒 Produits : plateformes e-commerce internationales  
 • 🎓 Études : certifications de diplômes, universités, examens  
 • 💻 Digital : logiciels, hébergement, abonnements  
 • 📦 Commerce : achats pour revente locale
@@ -288,7 +300,7 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
 ✅ Connexion sécurisée par OTP  
 ✅ Vérification humaine anti-bot  
 ✅ Suivi des commandes directement dans AfriPay  
-✅ Paiements internationaux facilités
+✅ Commandes internationaux facilités
 """,
         "login_info": "Connexion privée de test AfriPay. Après connexion, vous serez redirigé vers « Créer commande » pour commencer votre opération.",
         "phone": "Téléphone",
@@ -384,19 +396,20 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "create_order_title": "Créer commande",
         "need_login_create_order": "Tu dois être connecté.",
         "create_order_step_info": "📌 Étape principale après connexion : crée d’abord ta commande. Tu pourras ensuite vérifier le résultat dans « Mes commandes » puis dans le Dashboard Client.",
-        "create_order_info": "📌 AfriPay facilite le paiement international. Pour un produit physique, le transitaire reste sous la responsabilité du client. Pour un service ou paiement digital, aucun transitaire n’est requis.",
+        "create_order_info": "📌  AfriPay facilite les commandes internationales. Pour un produit physique, le transitaire reste sous la responsabilité du client. Pour un service ou commande digitale, aucun transitaire n’est requis.",
+                                                                                            
         "how_to_create": "### Comment créer votre commande",
         "create_steps": """
-1. Choisissez le **type de commande**  
-2. Collez le **lien du produit ou du service**  
-3. Indiquez le **nom du produit ou du service**  
-4. Saisissez le **montant total affiché par le marchand**  
-5. Choisissez la **devise du marchand**  
-6. Vérifiez le **résumé financier AfriPay**  
-7. Si c’est un produit physique, renseignez l'**adresse du transitaire / agence**  
-8. Choisissez votre **opérateur Mobile Money**
-""",
-        "legal_warning": "Message juridique : AfriPay agit comme facilitateur de paiement international. AfriPay n'assure pas le dédouanement ni la livraison finale des produits physiques. Le client demeure responsable de son transitaire, de l'adresse de réception finale et des formalités éventuelles liées à l'importation.",
+        1. Choisissez le **type de commande**  
+        2. Collez le **lien du produit ou du service**  
+        3. Indiquez le **nom du produit ou du service**  
+        4. Saisissez le **montant total affiché par le marchand**  
+        5. Choisissez la **devise du marchand**  
+        6. Vérifiez le **résumé financier AfriPay**  
+        7. Si c’est un produit physique, renseignez l'**adresse du transitaire / agence**  
+        8. Choisissez votre **opérateur Mobile Money**
+        """,
+        "legal_warning": " Message juridique : AfriPay est une plateforme technologique et un service d’achat international proposé par AfriDIGID. AfriDIGID se charge du traitement des commandes et du règlement auprès des marchands dans le cadre du service proposé. AfriPay n’assure pas le dédouanement ni la livraison finale des produits physiques. Le client reste responsable de son transitaire, de l’adresse de réception finale et des formalités liées à son achat.",
         "practical_tip": "Conseil pratique : saisissez le montant total final affiché par le marchand. Ce montant peut être en XAF ou en EUR selon le site ou le vendeur.",
         "payment_parameters": "### 💳 Paramètres de paiement",
         "order_type": "Type de commande *",
@@ -508,11 +521,12 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "whatsapp_origin_currency": "Devise d'origine du marchand : {currency}",
         "whatsapp_product_link_title": "Lien du produit / service :",
         "whatsapp_track_order": "Vous pouvez suivre votre commande directement dans AfriPay.",
-        "whatsapp_marketing_1": "🚀 AfriPay permet d'acheter vos achats et services internationaux depuis l’Afrique avec Mobile Money.",
+        "how_it_works_title": "🌍 Que pouvez-vous commander avec AfriPay ?",
+        "whatsapp_marketing_1": "🚀 AfriPay vous permet de commander des produits et services internationaux depuis l’Afrique avec Mobile Money.",
         "whatsapp_marketing_2": "Exemples : Amazon, Temu, certifications, universités, logiciels, abonnements, services en ligne.",
-        "whatsapp_marketing_3": "💡 Essayez AfriPay pour vos prochains paiements internationaux :",
+        "whatsapp_marketing_3": "💡 Essayez AfriPay pour vos commandes numériques et achats internationaux.",
         "whatsapp_brand": "AfriPay Afrika",
-        "whatsapp_tagline": "Facilitateur des paiements internationaux",
+        "whatsapp_tagline": "Solution numérique pour vos commandes internationales",
         "product_or_service_unspecified": "Produit ou service non précisé",
         "jan": "Jan",
         "feb": "Fév",
@@ -542,32 +556,38 @@ AfriPay permet de payer vos **achats et services internationaux** avec Mobile Mo
         "menu": "Menu",
         "language": "Language",
         "page_login_title": "Login",
+
         "page_login_intro_1": """
-        "how_it_works_title": "⚙️ How does it work?",
-        "how_it_works_step_1": "1️⃣ You send the product link (Amazon, Temu, etc.)",
-        "how_it_works_step_2": "2️⃣ AfriDIGID handles the purchase for you",
-        "how_it_works_step_3": "3️⃣ You track your order directly in AfriPay",
-        "how_it_works_note": "ℹ️ Transport, customs clearance and delivery are handled by your freight forwarder.\nFreight forwarder information is required to validate your order.",
+        ### 🌍 What can you order with AfriPay?
 
-"what_can_you_buy_title": "🌍 What can you buy with AfriPay?",       
+        AfriPay allows you to order **international products and services** from Africa using Mobile Money.
 
-AfriPay helps you pay for **international purchases and services** with Mobile Money from Africa.
+        **Examples:**
 
-**Examples:**
+        • 🛒 Products: international e-commerce platforms  
+        • 🎓 Studies: diploma certifications, universities, exams  
+        • 💻 Digital: software, hosting, subscriptions  
+        • 📦 Business: purchases for local resale
+        """,
 
-• 🛒 Products: Amazon, Temu, AliExpress  
-• 🎓 Studies: diploma certifications, universities, exams  
-• 💻 Digital: software, hosting, subscriptions  
-• 📦 Business: purchases for local resale
-""",
         "page_login_intro_2": """
-### 🔒 Why trust AfriPay?
+        ### 🔒 Why trust AfriPay?
 
-✅ Secure OTP login  
-✅ Anti-bot human verification  
-✅ Order tracking directly in AfriPay  
-✅ International payments made easier
-""",
+        ✅ Secure OTP login  
+        ✅ Anti-bot human verification  
+        ✅ Order tracking directly in AfriPay  
+        ✅ International purchases made easier
+        """,
+
+        "page_login_intro_2": """
+        ### 🔒 Why trust AfriPay?
+
+        ✅ Secure OTP login  
+        ✅ Anti-bot human verification  
+        ✅ Order tracking directly in AfriPay  
+        ✅ International purchases made easier
+        """,
+        
         "login_info": "Private AfriPay test login. After login, you will be redirected to “Create order” to start your operation.",
         "phone": "Phone",
         "otp_none": "No test OTP has been generated yet. Click “Send OTP” to generate a visible code on screen.",
@@ -616,7 +636,7 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "cumulated_xaf": "Total amount XAF",
         "cumulated_eur": "Total amount EUR",
         "summary_client": "Client summary",
-        "summary_client_info": "AfriPay facilitates your international payments. Customs clearance and final delivery remain your responsibility through your forwarder / agent for physical products.",
+        "summary_client_info": "AfriPay facilitates your international purchases. Customs clearance and final delivery remain your responsibility through your forwarder / agent for physical products.",
         "no_orders": "No orders yet.",
         "status_chart": "### 📊 Orders by status",
         "status_chart_empty": "Not enough data to display the status chart.",
@@ -662,19 +682,19 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "create_order_title": "Create order",
         "need_login_create_order": "You must be logged in.",
         "create_order_step_info": "📌 Main step after login: first create your order. You can then check the result in “My orders” and in the Client Dashboard.",
-        "create_order_info": "📌 AfriPay facilitates international payment. For a physical product, the forwarder remains the client’s responsibility. For a digital service or payment, no forwarder is required.",
+        "create_order_info": "📌 AfriPay facilitates international orders. For physical products, the freight forwarder remains the client's responsibility. For digital services or orders, no freight forwarder is required.",
         "how_to_create": "### How to create your order",
         "create_steps": """
-1. Choose the **order type**  
-2. Paste the **product or service link**  
-3. Enter the **product or service name**  
-4. Enter the **total amount displayed by the merchant**  
-5. Choose the **merchant currency**  
-6. Check the **AfriPay financial summary**  
-7. If it is a physical product, enter the **forwarder / agency address**  
-8. Choose your **Mobile Money operator**
-""",
-        "legal_warning": "Legal notice: AfriPay acts as an international payment facilitator. AfriPay does not handle customs clearance or final delivery of physical products. The client remains responsible for their forwarder, final delivery address, and any import-related formalities.",
+        1. Choose the **order type**  
+        2. Paste the **product or service link**  
+        3. Enter the **product or service name**  
+        4. Enter the **total amount displayed by the merchant**  
+        5. Choose the **merchant currency**  
+        6. Check the **AfriPay financial summary**  
+        7. If it is a physical product, enter the **forwarder / agency address**  
+        8. Choose your **Mobile Money operator**
+        """,
+        "legal_warning": "Legal notice: AfriPay is a technological platform and an international purchasing service provided by AfriDIGID. AfriDIGID handles order processing and payments to merchants within the scope of the service. AfriPay does not handle customs clearance or final delivery of physical products. The customer remains responsible for their freight forwarder, final delivery address, and any procedures related to their purchase.",
         "practical_tip": "Practical advice: enter the final total amount displayed by the merchant. This amount may be in XAF or EUR depending on the site or seller.",
         "payment_parameters": "### 💳 Payment settings",
         "order_type": "Order type *",
@@ -786,11 +806,11 @@ AfriPay helps you pay for **international purchases and services** with Mobile M
         "whatsapp_origin_currency": "Original merchant currency: {currency}",
         "whatsapp_product_link_title": "Product / service link:",
         "whatsapp_track_order": "You can track your order directly in AfriPay.",
-        "whatsapp_marketing_1": "🚀 AfriPay allows you to buy international products and services with ease.",
+        "whatsapp_marketing_1": "🚀 AfriPay helps you pay for your international purchases and services from Africa with Mobile Money.",
         "whatsapp_marketing_2": "Examples: Amazon, Temu, certifications, universities, software, subscriptions, online services.",
-        "whatsapp_marketing_3": "💡 Try AfriPay for your next international payments:",
+        "whatsapp_marketing_3": "💡 Try AfriPay for your international digital purchases:",
         "whatsapp_brand": "AfriPay Afrika",
-        "whatsapp_tagline": "International payment facilitator",
+        "whatsapp_tagline": "Digital solution for your international purchases",
         "product_or_service_unspecified": "Unspecified product or service",
         "jan": "Jan",
         "feb": "Feb",
@@ -874,6 +894,7 @@ def get_product_label(row, default="—"):
 def parse_date(value):
     if not value:
         return None
+    
 
     text = str(value).strip()
     formats = [
@@ -2223,6 +2244,19 @@ def page_creer_commande() -> None:
             key="create_order_client_ack",
         )
 
+        lang = st.session_state.get("language", "fr")
+
+        if lang == "en":
+            st.info(
+                "🎁 Exclusive offer: AfriPay service fees are offered for free on your first orders.\n\n"
+                "The product amount remains fully payable."
+            )
+        else:
+            st.info(
+                "🎁 Offre exclusive : les frais de service AfriPay sont offerts gratuitement sur vos premières commandes.\n\n"
+                "Le montant du produit reste entièrement à payer."
+            )
+
         submitted = st.form_submit_button(t("create_order_button"), width="stretch")
 
     if submitted:
@@ -2280,9 +2314,9 @@ def page_creer_commande() -> None:
         order_code = create_order_for_user(
             user_id=int(st.session_state["user_id"]),
             
-            client_name=st.session_state.get("user_name", "").strip(),
-            client_phone=st.session_state.get("user_phone", "").strip(),
-            client_email=st.session_state.get("user_email", "").strip(),
+            client_name=st.session_state.get("client_name", "").strip(),
+            client_phone=st.session_state.get("client_phone", "").strip(),
+            client_email="",
             
             site_name=site_name.strip(),
             product_url=product_url.strip(),
