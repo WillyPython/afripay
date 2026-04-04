@@ -171,6 +171,73 @@ def get_payment_status_label(status):
     return PAYMENT_STATUS_LABELS.get(normalized, normalized)
 
 
+# ===============================
+# BADGES VISUELS PRO
+# ===============================
+ORDER_STATUS_BADGE_STYLES = {
+    ORDER_STATUS_CREATED: {
+        "label": "Créée",
+        "bg": "#EFF6FF",
+        "text": "#1D4ED8",
+        "border": "#BFDBFE",
+    },
+    ORDER_STATUS_PAID: {
+        "label": "Payée",
+        "bg": "#ECFDF5",
+        "text": "#047857",
+        "border": "#A7F3D0",
+    },
+    ORDER_STATUS_IN_PROGRESS: {
+        "label": "En cours",
+        "bg": "#FFFBEB",
+        "text": "#B45309",
+        "border": "#FDE68A",
+    },
+    ORDER_STATUS_DELIVERED: {
+        "label": "Livrée",
+        "bg": "#F0FDF4",
+        "text": "#15803D",
+        "border": "#BBF7D0",
+    },
+    ORDER_STATUS_CANCELLED: {
+        "label": "Annulée",
+        "bg": "#FEF2F2",
+        "text": "#B91C1C",
+        "border": "#FECACA",
+    },
+}
+
+
+def get_order_status_badge_data(status):
+    normalized = normalize_order_status(status)
+    default_style = {
+        "label": get_order_status_label(normalized),
+        "bg": "#F3F4F6",
+        "text": "#374151",
+        "border": "#D1D5DB",
+    }
+    return ORDER_STATUS_BADGE_STYLES.get(normalized, default_style)
+
+
+def render_order_status_badge(status):
+    badge = get_order_status_badge_data(status)
+    return (
+        f"<span style='"
+        f"display:inline-block;"
+        f"padding:0.35rem 0.75rem;"
+        f"border-radius:999px;"
+        f"font-size:0.82rem;"
+        f"font-weight:700;"
+        f"line-height:1;"
+        f"white-space:nowrap;"
+        f"background:{badge['bg']};"
+        f"color:{badge['text']};"
+        f"border:1px solid {badge['border']};"
+        f"'>"
+        f"{badge['label']}"
+        f"</span>"
+    )
+
 def is_valid_customer_rating(value):
     try:
         rating = int(value)

@@ -269,6 +269,8 @@ from services.order_service import (
     get_order_by_code,
     get_payment_status_label,
     mark_payment_proof_sent,
+    render_order_status_badge,
+
 )
 from services.admin_service import (
     admin_is_configured,
@@ -2430,13 +2432,19 @@ def page_mes_commandes() -> None:
         total = safe_get(row, "total_xaf", 0)
         status = safe_get(row, "order_status", "—")
 
-        expander_title = f"{code} — {normalize_status(status)} — {format_xaf(total)} XAF"
+        expander_title = f"{code} — {format_xaf(total)} XAF"
+
+        status_badge = render_order_status_badge(status)
 
         merchant_total_amount = to_float(safe_get(row, "merchant_total_amount", 0), 0.0)
         merchant_currency = safe_get(row, "merchant_currency", "XAF")
         merchant_xaf, merchant_eur = compute_dual_amounts(merchant_total_amount, merchant_currency)
 
         with st.expander(expander_title):
+
+            st.markdown(status_badge, unsafe_allow_html=True)
+            st.write("")
+
             st.write(f"**{t('created_on')} :** {safe_get(row, 'created_at', '—')}")
             st.write(f"**{t('product_service')} :** {get_product_label(row)}")
             st.write(f"**{t('merchant_org_label')} :** {safe_get(row, 'site_name', '—')}")
