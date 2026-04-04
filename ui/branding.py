@@ -14,9 +14,18 @@ def render_sidebar_branding():
     Affiche le branding AfriPay dans la sidebar.
     """
 
+    lang = st.session_state.get("language", "fr")
+
     st.sidebar.markdown(
         """
         <style>
+        [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #06122E 0%, #081735 100%) !important;
+        }
+
+        [data-testid="stSidebar"] > div:first-child {
+        background: linear-gradient(180deg, #06122E 0%, #081735 100%) !important;
+        }
         .afripay-sidebar-logo-wrap {
             display: flex;
             justify-content: center;
@@ -115,13 +124,19 @@ def render_sidebar_branding():
         unsafe_allow_html=True,
     )
 
+    tagline = (
+    "achat de produits et services internationaux simplifiés depuis l’Afrique"
+    if lang == "fr"
+    else "Simplified purchase of international products and services from Africa"
+    )
+
     st.sidebar.markdown(
-        f"""
-        <div class="afripay-sidebar-tagline">
-            ✨ {APP_TAGLINE}
-        </div>
-        """,
-        unsafe_allow_html=True,
+    f"""
+    <div class="afripay-sidebar-tagline">
+        ✨ {tagline}
+    </div>
+    """,
+    unsafe_allow_html=True,
     )
 
     st.sidebar.markdown(
@@ -141,19 +156,35 @@ def render_sidebar_branding():
     )
     st.sidebar.markdown("<hr class='afripay-sidebar-divider'>", unsafe_allow_html=True)
 
-    st.sidebar.markdown(
-        """
-        <div class="afripay-security-card">
-            <div class="afripay-security-title">🔒 Plateforme sécurisée</div>
-            <ul class="afripay-security-list">
-                <li><span class="afripay-security-check">✔</span>Vérification téléphone (OTP)</li>
-                <li><span class="afripay-security-check">✔</span>Paiements vérifiés</li>
-                <li><span class="afripay-security-check">✔</span>Infrastructure protégée</li>
-                <li><span class="afripay-security-check">✔</span>Connexion HTTPS sécurisée</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.sidebar.markdown("<hr class='afripay-sidebar-divider'>", unsafe_allow_html=True)
+
+    security_title = "🔒  Plateforme sécurisée et fiable" if lang == "fr" else "🔒 Trusted & secure platform"
+
+    security_items = (
+        [
+        "Vérification téléphone (OTP)",
+        "Commandes vérifiées",
+        "Infrastructure protégée",
+        "Connexion HTTPS sécurisée",
+        ]
+        if lang == "fr"
+        else [
+        "Secure OTP login",
+        "Verified orders",
+        "Protected infrastructure",
+        "Secure HTTPS connection",
+        ]
     )
 
+    st.sidebar.markdown(
+    f"""
+    <div class="afripay-security-card">
+        <div class="afripay-security-title">{security_title}</div>
+        <ul class="afripay-security-list">
+            {''.join([f'<li><span class="afripay-security-check">✔</span>{item}</li>' for item in security_items])}
+        </ul>
+    </div>
+    """,
+    unsafe_allow_html=True,
+    )
     st.sidebar.markdown("<hr class='afripay-sidebar-divider'>", unsafe_allow_html=True)

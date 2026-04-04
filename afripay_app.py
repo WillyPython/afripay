@@ -20,6 +20,63 @@ st.set_page_config(
 st.markdown("""
 <style>
 
+/* SIDEBAR BACKstGROUND */
+[data-testid="stSidebar"] {
+    background-color: #0f172a; /* bleu foncé fintech */
+}
+
+/* TEXTES SIDEBAR PROPRES */
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] li,
+[data-testid="stSidebar"] .stMarkdown {
+    color: white !important;
+}
+
+/* SELECTBOX */
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background-color: white !important;
+    color: #0f172a !important;
+}
+
+[data-testid="stSidebar"] [data-baseweb="select"] span {
+    color: #0f172a !important;
+}
+
+[data-testid="stSidebar"] [data-baseweb="select"] svg {
+    fill: #0f172a !important;
+}
+
+/* TITRES SIDEBAR */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: white !important;
+}
+
+/* SELECTBOX */
+[data-testid="stSidebar"] .stSelectbox label {
+    color: #cbd5f5 !important;
+}
+
+/* MENU RADIO */
+[data-testid="stSidebar"] .stRadio label {
+    color: white !important;
+}
+
+/* BUTTON */
+[data-testid="stSidebar"] .stButton button {
+    background-color: #10b981;
+    color: white;
+    border-radius: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+
 /* Palette AfriPay */
 :root {
     --afripay-green: #1ABC9C;
@@ -757,7 +814,7 @@ AfriPay vous aide à commander des **produits et services internationaux** depui
         "see_referral_message": "View referral message",
         "referral_hello": "Hello 👋",
         "referral_intro": "I’m sharing AfriPay Afrika with you.",
-        "referral_body_1": "The platform helps people pay for some international purchases and services from Africa using Mobile Money.",
+        "referral_body_1": "The platform helps people order for some international purchases and services from Africa using Mobile Money.",
         "referral_examples_title": "Examples:",
         "referral_examples": "Amazon, Temu, certifications, universities, software, subscriptions",
         "referral_cta": "You can check it here:",
@@ -806,7 +863,7 @@ AfriPay vous aide à commander des **produits et services internationaux** depui
         "whatsapp_origin_currency": "Original merchant currency: {currency}",
         "whatsapp_product_link_title": "Product / service link:",
         "whatsapp_track_order": "You can track your order directly in AfriPay.",
-        "whatsapp_marketing_1": "🚀 AfriPay helps you pay for your international purchases and services from Africa with Mobile Money.",
+        "whatsapp_marketing_1": "🚀 AfriPay helps you for your international purchases and services from Africa with Mobile Money.",
         "whatsapp_marketing_2": "Examples: Amazon, Temu, certifications, universities, software, subscriptions, online services.",
         "whatsapp_marketing_3": "💡 Try AfriPay for your international digital purchases:",
         "whatsapp_brand": "AfriPay Afrika",
@@ -1096,7 +1153,7 @@ def calculate_afripay_fee(merchant_eur):
         return 0.0, 0.0
 
     fee_eur = merchant_eur * AFRIPAY_PERCENT_FEE
-    fee_xaf = eur_to_xaf(fee_eur)
+    fee_xaf = _round_xaf(eur_to_xaf(fee_eur))
     return fee_xaf, fee_eur
 
 
