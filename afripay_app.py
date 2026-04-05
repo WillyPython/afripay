@@ -4,6 +4,7 @@ import urllib.parse
 
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from services.order_service import _round_xaf
 
@@ -1700,15 +1701,24 @@ def page_connexion() -> None:
     st.title(t("page_login_title"))
 
     lang = st.session_state.get("language", "fr")
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    base_dir = Path(__file__).resolve().parent
+    assets_dir = base_dir / "assets"
+
+    hero_banner_fr = assets_dir / "hero_banner_fr.png"
+    hero_banner_en = assets_dir / "hero_banner_en.png"
+    logo_path = assets_dir / "logo.png"
 
     if lang == "fr":
-        banner_path = os.path.join(base_dir, "assets", "hero_banner_fr.png")
+        banner_path = hero_banner_fr if hero_banner_fr.exists() else hero_banner_en
     else:
-        banner_path = os.path.join(base_dir, "assets", "hero_banner_en.png")
+        banner_path = hero_banner_en if hero_banner_en.exists() else hero_banner_fr
 
-    if os.path.exists(banner_path):
-        st.image(banner_path, width="stretch")
+    if banner_path.exists():
+        st.image(str(banner_path), width="stretch")
+    elif logo_path.exists():
+        st.image(str(logo_path), width="stretch")
+
     consume_flash_message()
 
     st.markdown(t("page_login_intro_1"))
