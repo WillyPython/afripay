@@ -4,6 +4,51 @@ import urllib.parse
 import streamlit as st
 import streamlit.components.v1 as components
 
+
+st.markdown("""
+<style>
+/* Background global */
+.stApp {
+    background-color: #0F172A;
+}
+
+/* Texte principal */
+h1, h2, h3, h4, h5, h6, p, span, label {
+    color: #E5E7EB !important;
+}
+
+/* Cards Streamlit */
+[data-testid="stMetric"] {
+    background-color: #111827;
+    border-radius: 12px;
+    padding: 10px;
+}
+
+/* Expander (liste commandes) */
+details {
+    background-color: #111827 !important;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid #1F2937;
+}
+
+/* Inputs */
+input, textarea {
+    background-color: #1F2937 !important;
+    color: white !important;
+    border-radius: 8px !important;
+}
+
+/* Boutons */
+button {
+    background-color: #1F2937 !important;
+    color: white !important;
+    border-radius: 8px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 from core.session import logout_admin
 from services.admin_service import (
     admin_is_configured,
@@ -18,6 +63,7 @@ from services.order_service import (
     PAYMENT_STATUS_CONFIRMED,
     PAYMENT_STATUS_REJECTED,
     get_payment_status_label,
+    render_order_status_badge,
     list_orders_all,
     update_merchant_info,
     update_order_status,
@@ -235,6 +281,39 @@ def render_payment_status_badge(payment_status):
         unsafe_allow_html=True,
     )
 
+def render_fintech_stat_card(title, value, bg_color, border_color, text_color="#E5E7EB"):
+    st.markdown(
+        f"""
+        <div style="
+            background:{bg_color};
+            border:1px solid {border_color};
+            border-radius:18px;
+            padding:16px 18px;
+            min-height:110px;
+            box-shadow:0 10px 30px rgba(0,0,0,0.25);
+            margin-bottom:8px;
+        ">
+            <div style="
+                font-size:14px;
+                font-weight:600;
+                color:{text_color};
+                opacity:0.92;
+                margin-bottom:10px;
+            ">
+                {html.escape(str(title))}
+            </div>
+            <div style="
+                font-size:30px;
+                font-weight:800;
+                color:white;
+                line-height:1.1;
+            ">
+                {html.escape(str(value))}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def infer_tracking_label(tracking_url: str) -> str:
     url = str(tracking_url or "").strip().lower()
@@ -555,9 +634,13 @@ def render_order_card(order):
     merchant_status = safe_get(order, "merchant_status", "")
     merchant_notes = safe_get(order, "merchant_notes", "")
 
-    title = f"{order_code} — {user_name}"
+    title = f"{order_code} — {user_name} — {format_xaf(total_xaf)} XAF"
 
     with st.expander(title):
+
+        st.markdown(render_order_status_badge(order_status), unsafe_allow_html=True)
+        st.write("")
+
         c1, c2, c3 = st.columns(3)
 
         with c1:
@@ -566,7 +649,6 @@ def render_order_card(order):
             st.markdown(f"**Email :** {user_email}")
 
             st.markdown("**Statut AfriPay :**")
-            render_status_badge(order_status)
             st.caption(status_label)
 
             st.markdown("**Statut paiement :**")
@@ -728,6 +810,13 @@ def main():
 
     orders = list_orders_all()
 
+    created_count = 0
+    pending_payment_count = 0
+    paid_count = 0
+    in_progress_count = 0
+    delivered_count = 0
+    cancelled_count = 0
+
     total_orders = len(orders)
     paid_orders = 0
     in_progress_orders = 0
@@ -738,6 +827,24 @@ def main():
 
     for order in orders:
         status = str(safe_get(order, "order_status", "")).strip().upper()
+        
+        payment_status = str(safe_get(order, "payment_status", "")).strip().upper()
+
+        if status == "CREEE":
+            created_count += 1
+
+        if payment_status == "PENDING":
+            pending_payment_count += 1
+
+        if status == "PAYEE":
+            paid_count += 1
+        elif status == "EN_COURS":
+            in_progress_count += 1
+        elif status == "LIVREE":
+            delivered_count += 1
+        elif status == "ANNULEE":
+            cancelled_count += 1
+
         total_volume_xaf += float(safe_get(order, "total_xaf", 0) or 0)
         total_volume_eur += float(safe_get(order, "total_to_pay_eur", 0) or 0)
 
@@ -759,6 +866,30 @@ def main():
     if orders:
         max_order_xaf = max(float(safe_get(order, "total_xaf", 0) or 0) for order in orders)
         max_order_eur = max(float(safe_get(order, "total_to_pay_eur", 0) or 0) for order in orders)
+
+    st.markdown("### 📊 Suivi dynamique des statuts")
+
+    b1, b2, b3, b4, b5, b6 = st.columns(6)
+
+    with b1:
+        render_fintech_stat_card("⚪ Créées", created_count, "#0F172A", "#475569")
+
+    with b2:
+        render_fintech_stat_card("🟠 Paiement", pending_payment_count, "#7C2D12", "#F97316")  # ORANGE VIF
+
+    with b3:
+        render_fintech_stat_card("🟢 Payées", paid_count, "#064E3B", "#22C55E")  # GREEN OK
+
+    with b4:
+        render_fintech_stat_card("🟡 En cours", in_progress_count, "#713F12", "#FACC15")  # JAUNE VIF 🔥
+
+    with b5:
+        render_fintech_stat_card("🔵 Livrées", delivered_count, "#0C4A6E", "#38BDF8")
+
+    with b6:
+        render_fintech_stat_card("🔴 Annulées", cancelled_count, "#7F1D1D", "#EF4444")  # ROUGE VIF 🔥
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total commandes", total_orders)
