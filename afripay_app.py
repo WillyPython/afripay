@@ -1718,9 +1718,11 @@ def page_connexion() -> None:
     st.write("EXISTS:", banner_path.exists())
 
     if banner_path.exists():
-        st.image(str(banner_path), width="stretch")
+        with open(banner_path, "rb") as f:
+            st.image(f.read(), width="stretch")
     elif logo_path.exists():
-        st.image(str(logo_path), width="stretch")
+        with open(logo_path, "rb") as f:
+            st.image(f.read(), width="stretch")
 
     consume_flash_message()
 
