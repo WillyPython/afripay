@@ -1812,12 +1812,12 @@ def render_sidebar() -> str:
             if is_fr:
                 sidebar_free_plan_text = (
                     "❌ Offre gratuite terminée<br>"
-                    "👉 Passez en Premium"
+                    "<b>👉 Passez en Premium pour continuer vos commandes</b>"
                 )
             else:
                 sidebar_free_plan_text = (
                     "❌ Free offer exhausted<br>"
-                    "👉 Upgrade to Premium"
+                    "<b>👉 Upgrade to Premium to continue ordering</b>"
                 )
 
 
