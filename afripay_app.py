@@ -8,9 +8,9 @@ from pathlib import Path
 from PIL import Image
 
 from services.order_service import _round_xaf
+from services.user_service import get_user_by_id
 
 import streamlit as st
-
 
 
 st.set_page_config(
@@ -22,7 +22,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* SIDEBAR BACKstGROUND */
+/* SIDEBAR BACKGROUND */
 [data-testid="stSidebar"] {
     background-color: #0f172a; /* bleu foncé fintech */
 }
@@ -73,6 +73,28 @@ st.markdown("""
     border-radius: 10px;
 }
 
+/* BADGES PLAN */
+.afripay-plan-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin: 8px 0 10px 0;
+    letter-spacing: 0.02em;
+}
+
+.afripay-plan-free {
+    background: rgba(59, 130, 246, 0.16);
+    color: #bfdbfe;
+    border: 1px solid rgba(191, 219, 254, 0.30);
+}
+
+.afripay-plan-premium {
+    background: rgba(251, 191, 36, 0.14);
+    color: #fde68a;
+    border: 1px solid rgba(253, 230, 138, 0.30);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -105,7 +127,7 @@ st.markdown("""
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(16,185,129,0.25);
 }
-            
+
 /* Container */
 .block-container {
     padding-top: 2rem;
@@ -135,8 +157,8 @@ section[data-testid="stSidebar"] [data-testid="stAlert"] {
 section[data-testid="stSidebar"] [data-testid="stAlert"] * {
     color: #0F172A !important;
     -webkit-text-fill-color: #0F172A !important;
-}            
-                       
+}
+
 /* Selectbox sidebar */
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     background-color: var(--afripay-white) !important;
@@ -148,6 +170,7 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
     color: var(--afripay-black) !important;
     -webkit-text-fill-color: var(--afripay-black) !important;
 }
+
 /* Fond principal plus doux */
 [data-testid="stAppViewContainer"] {
     background-color: #F4F7FB !important;
@@ -165,10 +188,12 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] span {
     border: 1px solid rgba(255, 255, 255, 0.35);
     box-shadow: 0 12px 35px rgba(15, 23, 42, 0.10);
 }
+
 /* Fond global légèrement plus neutre */
 [data-testid="stAppViewContainer"] {
     background-color: #EEF2F7 !important;
 }
+
 /* Inputs plus nets */
 .stTextInput input,
 .stTextArea textarea,
@@ -199,8 +224,8 @@ h1, h2, h3 {
 p, label, div {
     color: #1F2937;
 }
-/* Alertes plus premium */
 
+/* Alertes plus premium */
 [data-testid="stAlert"] {
     border-radius: 12px !important;
     padding: 14px 16px !important;
@@ -225,8 +250,9 @@ p, label, div {
     background-color: #ECFDF5 !important;
     color: #065F46 !important;
 }
+
 /* Cartes glass (messages, captcha, info) */
-.stAlert, 
+.stAlert,
 div[data-testid="stNotification"] {
     background: rgba(255,255,255,0.65) !important;
     backdrop-filter: blur(8px);
@@ -235,6 +261,7 @@ div[data-testid="stNotification"] {
 }
 </style>
 """, unsafe_allow_html=True)
+
 lang = st.session_state.get("language", "fr")
 
 if lang == "en":
@@ -272,7 +299,6 @@ from services.order_service import (
     get_payment_status_label,
     mark_payment_proof_sent,
     render_order_status_badge,
-
 )
 from services.admin_service import (
     admin_is_configured,
@@ -285,6 +311,9 @@ from ui.branding import render_sidebar_branding
 AFRIPAY_PUBLIC_URL = "https://afripayafrika.com"
 EUR_TO_XAF_RATE = 655.957
 AFRIPAY_PERCENT_FEE = 0.20
+
+FREE_ORDERS_LIMIT = 2
+FREE_ORDER_MAX_XAF = 50000
 
 # WhatsApp numbers from Render environment variables
 WHATSAPP_DEFAULT = os.getenv("WHATSAPP_DEFAULT", "31620361841")
@@ -458,7 +487,6 @@ AfriPay vous aide à commander des **produits et services internationaux** depui
         "need_login_create_order": "Tu dois être connecté.",
         "create_order_step_info": "📌 Étape principale après connexion : crée d’abord ta commande. Tu pourras ensuite vérifier le résultat dans « Mes commandes » puis dans le Dashboard Client.",
         "create_order_info": "📌  AfriPay facilite les commandes internationales. Pour un produit physique, le transitaire reste sous la responsabilité du client. Pour un service ou commande digitale, aucun transitaire n’est requis.",
-                                                                                            
         "how_to_create": "### Comment créer votre commande",
         "create_steps": """
         1. Choisissez le **type de commande**  
@@ -617,38 +645,26 @@ AfriPay vous aide à commander des **produits et services internationaux** depui
         "menu": "Menu",
         "language": "Language",
         "page_login_title": "Login",
-
         "page_login_intro_1": """
-        ### 🌍 What can you order with AfriPay?
+### 🌍 What can you order with AfriPay?
 
-        AfriPay allows you to order **international products and services** from Africa using Mobile Money.
+AfriPay allows you to order **international products and services** from Africa using Mobile Money.
 
-        **Examples:**
+**Examples:**
 
-        • 🛒 Products: international e-commerce platforms  
-        • 🎓 Studies: diploma certifications, universities, exams  
-        • 💻 Digital: software, hosting, subscriptions  
-        • 📦 Business: purchases for local resale
-        """,
-
+• 🛒 Products: international e-commerce platforms  
+• 🎓 Studies: diploma certifications, universities, exams  
+• 💻 Digital: software, hosting, subscriptions  
+• 📦 Business: purchases for local resale
+""",
         "page_login_intro_2": """
-        ### 🔒 Why trust AfriPay?
+### 🔒 Why trust AfriPay?
 
-        ✅ Secure OTP login  
-        ✅ Anti-bot human verification  
-        ✅ Order tracking directly in AfriPay  
-        ✅ International purchases made easier
-        """,
-
-        "page_login_intro_2": """
-        ### 🔒 Why trust AfriPay?
-
-        ✅ Secure OTP login  
-        ✅ Anti-bot human verification  
-        ✅ Order tracking directly in AfriPay  
-        ✅ International purchases made easier
-        """,
-        
+✅ Secure OTP login  
+✅ Anti-bot human verification  
+✅ Order tracking directly in AfriPay  
+✅ International purchases made easier
+""",
         "login_info": "Private AfriPay test login. After login, you will be redirected to “Create order” to start your operation.",
         "phone": "Phone",
         "otp_none": "No test OTP has been generated yet. Click “Send OTP” to generate a visible code on screen.",
@@ -867,14 +883,11 @@ AfriPay vous aide à commander des **produits et services internationaux** depui
         "whatsapp_origin_currency": "Merchant original currency: {currency}",
         "whatsapp_product_link_title": "🔗 Product / service link:",
         "whatsapp_track_order": "👉 Track your order directly in AfriPay.",
-
         "whatsapp_marketing_1": "🌍 AfriPay lets you easily purchase products and services internationally from Africa.",
         "whatsapp_marketing_2": "🛒 Amazon, Temu, courses, subscriptions, online services…",
         "whatsapp_marketing_3": "✨ A simple, fast and secure solution for your international purchases.",
-
         "whatsapp_brand": "AfriPay Afrika",
         "whatsapp_tagline": "Digital solution for your international orders",
-        
         "product_or_service_unspecified": "Unspecified product or service",
         "jan": "Jan",
         "feb": "Feb",
@@ -943,6 +956,7 @@ def safe_get(row, key, default=""):
     value = row.get(key, default)
     return value if value not in (None, "") else default
 
+
 def get_product_label(row, default="—"):
     value = safe_get(row, "product_title", "")
     if value:
@@ -958,7 +972,6 @@ def get_product_label(row, default="—"):
 def parse_date(value):
     if not value:
         return None
-    
 
     text = str(value).strip()
     formats = [
@@ -1185,18 +1198,120 @@ def compute_payment_preview(merchant_total_amount, merchant_currency):
     }
 
 
+def get_user_free_context():
+    user = None
+    free_orders_used = 0
+    plan = "FREE"
+
+    user_id = st.session_state.get("user_id")
+    if user_id:
+        user = get_user_by_id(user_id)
+
+    if user:
+        free_orders_used = int(user.get("free_orders_used", 0) or 0)
+        plan = str(user.get("plan", "FREE") or "FREE").strip().upper()
+
+    remaining_orders = max(0, FREE_ORDERS_LIMIT - free_orders_used)
+    is_premium = plan == "PREMIUM"
+
+    return {
+        "user": user,
+        "free_orders_used": free_orders_used,
+        "remaining_orders": remaining_orders,
+        "plan": plan,
+        "is_premium": is_premium,
+    }
+
+
+def apply_freemium_to_preview(preview: dict):
+    adjusted = dict(preview)
+    free_context = get_user_free_context()
+
+    merchant_xaf_rounded = _round_xaf(adjusted.get("merchant_xaf", 0))
+
+    free_applied = (
+        not free_context["is_premium"]
+        and free_context["remaining_orders"] > 0
+        and merchant_xaf_rounded <= FREE_ORDER_MAX_XAF
+    )
+
+    if free_applied:
+        adjusted["afripay_fee_xaf"] = 0
+        adjusted["afripay_fee_eur"] = 0.0
+        adjusted["total_to_pay_xaf"] = _round_xaf(adjusted["merchant_xaf"])
+        adjusted["total_to_pay_eur"] = adjusted["merchant_eur"]
+
+    adjusted["free_applied"] = free_applied
+    adjusted["free_remaining_orders"] = free_context["remaining_orders"]
+    adjusted["user_plan"] = free_context["plan"]
+    adjusted["is_premium"] = free_context["is_premium"]
+    adjusted["free_orders_used"] = free_context["free_orders_used"]
+    adjusted["free_order_max_xaf"] = FREE_ORDER_MAX_XAF
+
+    return adjusted
+
+
+def render_freemium_order_info(preview: dict) -> None:
+    is_fr = st.session_state.get("language", "fr") == "fr"
+
+    if preview.get("is_premium"):
+        if is_fr:
+            st.success("✨ Compte PREMIUM détecté.")
+        else:
+            st.success("✨ PREMIUM account detected.")
+        return
+
+    merchant_xaf_rounded = _round_xaf(preview.get("merchant_xaf", 0))
+    remaining_orders = int(preview.get("free_remaining_orders", 0) or 0)
+
+    if preview.get("free_applied"):
+        if is_fr:
+            st.success(
+                f"🎁 Offre FREE appliquée : les frais AfriPay sont offerts sur cette commande.\n\n"
+                f"Le montant marchand reste payable.\n"
+                f"Il vous restera {max(0, remaining_orders - 1)} commande(s) FREE après validation."
+            )
+        else:
+            st.success(
+                f"🎁 FREE offer applied: AfriPay fees are waived for this order.\n\n"
+                f"The merchant amount remains payable.\n"
+                f"You will have {max(0, remaining_orders - 1)} FREE order(s) left after validation."
+            )
+        return
+
+    if remaining_orders <= 0:
+        if is_fr:
+            st.info("ℹ️ Offre FREE non appliquée : vos 2 commandes FREE sont déjà utilisées.")
+        else:
+            st.info("ℹ️ FREE offer not applied: your 2 FREE orders have already been used.")
+        return
+
+    if merchant_xaf_rounded > FREE_ORDER_MAX_XAF:
+        if is_fr:
+            st.info(
+                f"ℹ️ Offre FREE non appliquée : une commande FREE est limitée à {format_xaf(FREE_ORDER_MAX_XAF)} XAF.\n\n"
+                f"Le montant marchand reste payable et les frais AfriPay standards s’appliquent."
+            )
+        else:
+            st.info(
+                f"ℹ️ FREE offer not applied: one FREE order is limited to {format_xaf(FREE_ORDER_MAX_XAF)} XAF.\n\n"
+                f"The merchant amount remains payable and standard AfriPay fees apply."
+            )
+
+
 def build_whatsapp_order_message(
     order_code,
     product_title,
     merchant_total_amount,
     merchant_currency,
     product_url,
+    payment_preview=None,
 ):
     clean_product_title = str(product_title or "").strip() or t("product_or_service_unspecified")
     clean_product_url = str(product_url or "").strip()
     currency = str(merchant_currency or "").strip().upper() or "EUR"
 
-    preview = compute_payment_preview(merchant_total_amount, currency)
+    preview = payment_preview or compute_payment_preview(merchant_total_amount, currency)
 
     lines = [
         t("whatsapp_hello"),
@@ -1664,6 +1779,68 @@ def render_sidebar() -> str:
         st.session_state["language"] = new_language
         st.rerun()
 
+    is_fr = st.session_state.get("language", "fr") == "fr"
+    free_context = get_user_free_context()
+    remaining_orders = free_context["remaining_orders"]
+    is_premium = free_context["is_premium"]
+
+    badge_label = "PREMIUM" if is_premium else "FREE"
+    badge_class = "afripay-plan-premium" if is_premium else "afripay-plan-free"
+
+    st.sidebar.markdown(
+        f'<div class="afripay-plan-badge {badge_class}">{badge_label}</div>',
+        unsafe_allow_html=True,
+    )
+
+    sidebar_free_plan_title = "🎁 OFFRE GRATUITE" if is_fr else "🎁 FREE OFFER"
+
+    if is_premium:
+        sidebar_free_plan_text = "✨ Compte Premium actif" if is_fr else "✨ Premium account active"
+    else:
+        if remaining_orders > 0:
+            if is_fr:
+                sidebar_free_plan_text = (
+                    f"Il vous reste {remaining_orders} commande(s)<br>"
+                    f"Max : 50 000 XAF par commande"
+                )
+            else:
+                sidebar_free_plan_text = (
+                    f"You have {remaining_orders} order(s) left<br>"
+                    f"Max: 50,000 XAF per order"
+                )
+        else:
+            if is_fr:
+                sidebar_free_plan_text = (
+                    "❌ Offre gratuite terminée<br>"
+                    "👉 Passez en Premium"
+                )
+            else:
+                sidebar_free_plan_text = (
+                    "❌ Free offer exhausted<br>"
+                    "👉 Upgrade to Premium"
+                )
+
+
+    st.sidebar.markdown(
+    f"""
+    <div style="
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 14px;
+        padding: 12px 14px;
+        margin: 10px 0 14px 0;
+    ">
+        <div style="color:#FACC15; font-weight:700;">
+            {sidebar_free_plan_title}
+        </div>
+        <div style="color:#22C55E;">
+            {sidebar_free_plan_text}
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
     if st.session_state.get("logged_in"):
         st.sidebar.success(t("connected"))
         connected_phone = st.session_state.get("phone", "")
@@ -2121,10 +2298,20 @@ def render_post_order_actions(order_data: dict) -> None:
     st.success(t("order_created", order_code=order_code))
     st.info(t("order_saved_info"))
 
-    preview = compute_payment_preview(
-        merchant_total_amount,
-        merchant_currency,
-    )
+    if "merchant_xaf" in order_data:
+        preview = {
+            "merchant_xaf": to_float(order_data.get("merchant_xaf", 0.0), 0.0),
+            "merchant_eur": to_float(order_data.get("merchant_eur", 0.0), 0.0),
+            "afripay_fee_xaf": to_float(order_data.get("afripay_fee_xaf", 0.0), 0.0),
+            "afripay_fee_eur": to_float(order_data.get("afripay_fee_eur", 0.0), 0.0),
+            "total_to_pay_xaf": to_float(order_data.get("total_to_pay_xaf", 0.0), 0.0),
+            "total_to_pay_eur": to_float(order_data.get("total_to_pay_eur", 0.0), 0.0),
+        }
+    else:
+        preview = compute_payment_preview(
+            merchant_total_amount,
+            merchant_currency,
+        )
 
     st.success(
         t(
@@ -2144,6 +2331,7 @@ def render_post_order_actions(order_data: dict) -> None:
         merchant_total_amount=merchant_total_amount,
         merchant_currency=merchant_currency,
         product_url=product_url,
+        payment_preview=preview,
     )
     whatsapp_url = build_whatsapp_share_url(whatsapp_message)
 
@@ -2254,8 +2442,10 @@ def page_creer_commande() -> None:
         merchant_total_amount,
         merchant_currency,
     )
+    payment_preview = apply_freemium_to_preview(payment_preview)
 
     render_payment_summary(payment_preview)
+    render_freemium_order_info(payment_preview)
 
     with st.form("create_order_form"):
         st.markdown(t("main_information"))
@@ -2323,13 +2513,15 @@ def page_creer_commande() -> None:
 
         if lang == "en":
             st.info(
-                "🎁 Exclusive offer: AfriPay service fees are offered for free on your first orders.\n\n"
-                "The product amount remains fully payable."
+                "🎁 Exclusive offer: FREE means AfriPay service fees are waived only.\n\n"
+                "The merchant amount remains fully payable.\n"
+                "Maximum: 2 FREE orders, and 50,000 XAF per FREE order."
             )
         else:
             st.info(
-                "🎁 Offre exclusive : les frais de service AfriPay sont offerts gratuitement sur vos premières commandes.\n\n"
-                "Le montant du produit reste entièrement à payer."
+                "🎁 Offre exclusive : FREE signifie que seuls les frais de service AfriPay sont offerts.\n\n"
+                "Le montant marchand reste entièrement payable.\n"
+                "Maximum : 2 commandes FREE, et 50.000 XAF par commande FREE."
             )
 
         submitted = st.form_submit_button(t("create_order_button"), width="stretch")
@@ -2378,6 +2570,7 @@ def page_creer_commande() -> None:
             merchant_total_amount,
             merchant_currency,
         )
+        final_preview = apply_freemium_to_preview(final_preview)
 
         if str(merchant_currency).strip().upper() == "EUR":
             product_price_eur = to_float(merchant_total_amount, 0.0)
@@ -2388,11 +2581,9 @@ def page_creer_commande() -> None:
 
         order_code = create_order_for_user(
             user_id=int(st.session_state["user_id"]),
-            
-            client_name=st.session_state.get("client_name", "").strip(),
-            client_phone=st.session_state.get("client_phone", "").strip(),
-            client_email="",
-            
+            client_name=st.session_state.get("name", "").strip(),
+            client_phone=st.session_state.get("phone", "").strip(),
+            client_email=st.session_state.get("email", "").strip(),
             site_name=site_name.strip(),
             product_url=product_url.strip(),
             product_title=product_title.strip(),
@@ -2416,7 +2607,13 @@ def page_creer_commande() -> None:
             "merchant_total_amount": float(merchant_total_amount),
             "merchant_currency": merchant_currency,
             "momo_provider": momo_provider.strip() or "MTN MoMo / Orange Money",
+            "merchant_xaf": float(final_preview["merchant_xaf"]),
+            "merchant_eur": float(final_preview["merchant_eur"]),
+            "afripay_fee_xaf": float(final_preview["afripay_fee_xaf"]),
+            "afripay_fee_eur": float(final_preview["afripay_fee_eur"]),
             "total_to_pay_xaf": float(final_preview["total_to_pay_xaf"]),
+            "total_to_pay_eur": float(final_preview["total_to_pay_eur"]),
+            "free_applied": bool(final_preview.get("free_applied", False)),
         }
 
         clear_captcha_error("order")
@@ -2457,7 +2654,6 @@ def page_mes_commandes() -> None:
         merchant_xaf, merchant_eur = compute_dual_amounts(merchant_total_amount, merchant_currency)
 
         with st.expander(expander_title):
-
             st.markdown(status_badge, unsafe_allow_html=True)
             st.write("")
 
@@ -2539,8 +2735,6 @@ def page_admin() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title=APP_TITLE, layout="wide")
-
     init_db()
     ensure_defaults()
     init_session()
@@ -2571,4 +2765,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    

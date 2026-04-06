@@ -1,6 +1,8 @@
 from datetime import datetime
 import secrets
 
+from services.user_service import get_user_by_id, increment_free_orders_used
+
 from data.database import get_cursor
 from services.admin_service import get_setting, DEFAULT_EUR_XAF_RATE
 
@@ -355,7 +357,26 @@ def create_order_for_user(
     total_xaf=None,
     total_to_pay_eur=None,
 ):
+    
     order_code = generate_order_code()
+
+    # ===============================
+    # FREEMIUM CHECK
+    # ===============================
+    
+
+    user = get_user_by_id(user_id)
+
+    if user:
+        if user.get("plan") == "FREE":
+        
+            # Limite nombre de commandes gratuites
+            if user.get("free_orders_used", 0) >= 2:
+                raise ValueError("Limite FREE atteinte (2 commandes max). Passez en Premium.")
+        
+            # Limite montant commande
+            if total_xaf and total_xaf > 50000:
+                raise ValueError("Montant trop élevé pour une commande FREE (max 50 000 XAF). Passez en Premium.")
 
     clean_client_name = _clean_text(client_name)
     clean_client_phone = _clean_text(client_phone)
@@ -483,6 +504,9 @@ def create_order_for_user(
             ),
         )
         row = cur.fetchone()
+
+    if user and user.get("plan") == "FREE":
+        increment_free_orders_used(user_id)
 
     return row["order_code"] if row else order_code
 

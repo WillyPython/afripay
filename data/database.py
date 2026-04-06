@@ -157,6 +157,21 @@ def init_db():
                 """
             )
 
+            # Ajout colonnes freemium
+            add_column_if_missing(
+                cur,
+                "users",
+                "plan",
+                "TEXT DEFAULT 'FREE'"
+            )
+
+            add_column_if_missing(
+                cur,
+                "users",
+                "free_orders_used",
+                "INTEGER DEFAULT 0"
+            )
+
             # -------------------------
             # SETTINGS
             # -------------------------

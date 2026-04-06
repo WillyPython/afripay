@@ -40,9 +40,12 @@ def normalize_phone(phone: str) -> str:
 
 
 # ------------------------------
-# Récupérer utilisateur
+# Récupérer utilisateur par téléphone
 # ------------------------------
 def get_user_by_phone(phone: str):
+    """
+    Récupère un utilisateur par son numéro de téléphone normalisé.
+    """
     normalized_phone = normalize_phone(phone)
 
     if not normalized_phone:
@@ -51,7 +54,7 @@ def get_user_by_phone(phone: str):
     with get_cursor() as cur:
         cur.execute(
             """
-            SELECT id, phone, name, email, created_at
+            SELECT id, phone, name, email, plan, free_orders_used, created_at
             FROM users
             WHERE phone = %s
             LIMIT 1
@@ -64,9 +67,55 @@ def get_user_by_phone(phone: str):
 
 
 # ------------------------------
+# Récupérer utilisateur par ID
+# ------------------------------
+def get_user_by_id(user_id: int):
+    """
+    Récupère un utilisateur par son identifiant.
+    """
+    if not user_id:
+        return None
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, phone, name, email, plan, free_orders_used, created_at
+            FROM users
+            WHERE id = %s
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        user = cur.fetchone()
+
+    return user
+
+
+# ------------------------------
+# Incrémenter commandes gratuites
+# ------------------------------
+def increment_free_orders_used(user_id: int) -> None:
+    """
+    Incrémente le compteur des commandes gratuites utilisées.
+    """
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            UPDATE users
+            SET free_orders_used = COALESCE(free_orders_used, 0) + 1
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+
+
+# ------------------------------
 # Créer utilisateur
 # ------------------------------
 def create_user(phone: str, name: str = "", email: str = "") -> int:
+    """
+    Crée un nouvel utilisateur.
+    """
     normalized_phone = normalize_phone(phone)
     cleaned_name = clean_text(name)
     cleaned_email = clean_text(email)
@@ -77,14 +126,23 @@ def create_user(phone: str, name: str = "", email: str = "") -> int:
     with get_cursor(commit=True) as cur:
         cur.execute(
             """
-            INSERT INTO users (phone, name, email, created_at)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO users (
+                phone,
+                name,
+                email,
+                plan,
+                free_orders_used,
+                created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 normalized_phone,
                 cleaned_name,
                 cleaned_email,
+                "FREE",
+                0,
                 datetime.utcnow(),
             ),
         )
