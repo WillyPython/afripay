@@ -9,6 +9,8 @@ from services.admin_service import get_setting, DEFAULT_EUR_XAF_RATE
 
 DEFAULT_SELLER_FEE_XAF = 0
 DEFAULT_AFRIPAY_FEE_XAF = 0
+FREE_ORDER_LIMIT = 2
+FREE_MAX_TOTAL_XAF = 50000
 
 
 # ===============================
@@ -148,6 +150,18 @@ def _round_xaf(value):
     return int(round(value / 5.0) * 5)
 
 
+def _get_user_plan(user):
+    if not user:
+        return "FREE"
+    return _clean_text(user.get("plan"), "FREE").upper()
+
+
+def _get_user_free_orders_used(user):
+    if not user:
+        return 0
+    return _to_int(user.get("free_orders_used"), 0)
+
+
 def normalize_order_status(value, default=ORDER_STATUS_CREATED):
     cleaned = _clean_text(value, default).upper()
     return cleaned if cleaned in ORDER_STATUS_OPTIONS else default
@@ -239,6 +253,7 @@ def render_order_status_badge(status):
         f"{badge['label']}"
         f"</span>"
     )
+
 
 def is_valid_customer_rating(value):
     try:
@@ -357,26 +372,15 @@ def create_order_for_user(
     total_xaf=None,
     total_to_pay_eur=None,
 ):
-    
-    order_code = generate_order_code()
-
-    # ===============================
-    # FREEMIUM CHECK
-    # ===============================
-    
-
     user = get_user_by_id(user_id)
 
-    if user:
-        if user.get("plan") == "FREE":
-        
-            # Limite nombre de commandes gratuites
-            if user.get("free_orders_used", 0) >= 2:
-                raise ValueError("Limite FREE atteinte (2 commandes max). Passez en Premium.")
-        
-            # Limite montant commande
-            if total_xaf and total_xaf > 50000:
-                raise ValueError("Montant trop élevé pour une commande FREE (max 50 000 XAF). Passez en Premium.")
+    if not user:
+        raise ValueError("Utilisateur introuvable. Veuillez vous reconnecter.")
+
+    user_plan = _get_user_plan(user)
+    free_orders_used = _get_user_free_orders_used(user)
+
+    order_code = generate_order_code()
 
     clean_client_name = _clean_text(client_name)
     clean_client_phone = _clean_text(client_phone)
@@ -429,6 +433,20 @@ def create_order_for_user(
             + final_afripay_fee_xaf
         )
     )
+
+    # ===============================
+    # FREEMIUM CHECK BLINDÉ
+    # ===============================
+    if user_plan == "FREE":
+        if free_orders_used >= FREE_ORDER_LIMIT:
+            raise ValueError(
+                "Limite FREE atteinte : 2 commandes maximum. Passez en Premium."
+            )
+
+        if final_total_xaf > FREE_MAX_TOTAL_XAF:
+            raise ValueError(
+                "Une commande FREE ne peut pas dépasser 50 000 XAF. Passez en Premium."
+            )
 
     if merchant_total_amount is None:
         if clean_merchant_currency == "XAF":
@@ -505,10 +523,13 @@ def create_order_for_user(
         )
         row = cur.fetchone()
 
-    if user and user.get("plan") == "FREE":
+    if not row:
+        raise ValueError("La commande n'a pas pu être créée.")
+
+    if user_plan == "FREE":
         increment_free_orders_used(user_id)
 
-    return row["order_code"] if row else order_code
+    return row["order_code"]
 
 
 # ===============================
