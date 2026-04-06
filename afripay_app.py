@@ -5,6 +5,7 @@ import urllib.parse
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from PIL import Image
 
 from services.order_service import _round_xaf
 
@@ -1715,9 +1716,11 @@ def page_connexion() -> None:
         banner_path = hero_banner_en if hero_banner_en.exists() else hero_banner_fr
 
     if banner_path.exists():
-        st.image(str(banner_path), width="stretch")
+        img = Image.open(banner_path)
+        st.image(img, width="stretch")
     elif logo_path.exists():
-        st.image(str(logo_path), width="stretch")
+        img = Image.open(logo_path)
+        st.image(img, width="stretch")
 
     consume_flash_message()
 
