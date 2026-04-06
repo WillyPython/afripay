@@ -1714,15 +1714,10 @@ def page_connexion() -> None:
     else:
         banner_path = hero_banner_en if hero_banner_en.exists() else hero_banner_fr
 
-    st.write("DEBUG PATH:", str(banner_path))
-    st.write("EXISTS:", banner_path.exists())
-
     if banner_path.exists():
-        with open(banner_path, "rb") as f:
-            st.image(f.read(), width="stretch")
+        st.image(str(banner_path), width="stretch")
     elif logo_path.exists():
-        with open(logo_path, "rb") as f:
-            st.image(f.read(), width="stretch")
+        st.image(str(logo_path), width="stretch")
 
     consume_flash_message()
 
