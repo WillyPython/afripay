@@ -2,6 +2,8 @@ import os
 import secrets
 import urllib.parse
 
+from services.order_service import get_order_by_code
+
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,6 +11,30 @@ from PIL import Image
 
 from services.order_service import _round_xaf
 from services.user_service import get_user_by_id
+
+def generate_whatsapp_link(order):
+    WHATSAPP_NUMBER = os.getenv("WHATSAPP_DEFAULT")
+
+    if not WHATSAPP_NUMBER:
+        raise ValueError("WHATSAPP_DEFAULT non configuré")
+
+    message = (
+        f"🧾 Nouvelle commande AfriPay\n\n"
+        f"👤 Client: {order.get('client_name') or 'Client'}\n"
+        f"📞 Téléphone: {order.get('client_phone') or '-'}\n\n"
+
+        f"💰 Montant: {order.get('total_xaf') or 0} XAF\n"
+        f"📦 Référence: {order.get('order_code')}\n\n"
+
+        f"👉 Vérifier le lien avant paiement\n\n"
+
+        f"🛒 Produit: {order.get('product_title') or '-'}\n"
+        f"🔗 Lien: {order.get('product_url') or '-'}\n\n"
+    )
+
+    encoded_message = urllib.parse.quote(message)
+
+    return f"https://wa.me/{WHATSAPP_NUMBER}?text={encoded_message}"
 
 import streamlit as st
 
@@ -2599,6 +2625,26 @@ def page_creer_commande() -> None:
             total_xaf=float(final_preview["total_to_pay_xaf"]),
             total_to_pay_eur=float(final_preview["total_to_pay_eur"]),
         )
+
+        order = get_order_by_code(order_code)
+
+        whatsapp_link = generate_whatsapp_link(order)
+
+        st.markdown(f"""
+        <a href="{whatsapp_link}" target="_blank">
+            <button style="
+                background-color:#25D366;
+                color:white;
+                padding:12px 20px;
+                border:none;
+                border-radius:8px;
+                font-weight:600;
+                cursor:pointer;
+            ">
+                📲 Envoyer vers WhatsApp (validation)
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
 
         st.session_state["last_created_order"] = {
             "order_code": order_code,
