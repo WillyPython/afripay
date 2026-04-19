@@ -156,7 +156,7 @@ TRANSLATIONS = {
         "create_order": "Créer la commande",
         "free_block_limit": "Votre quota FREE est épuisé. Passez à une offre payante pour continuer.",
         "free_block_amount": "Le plan FREE accepte au maximum 50 000 XAF par commande.",
-        "free_block_limit_no_whatsapp": None,
+        "free_block_limit_no_whatsapp": "Bienvenue. Sélectionnez votre plan.",
         "free_upgrade_ready": "Votre quota FREE est épuisé. Vous pouvez maintenant passer à une offre payante.",
         "premium_plus_blocked": "Création bloquée : PREMIUM_PLUS existe dans votre profil, mais il n'est pas encore validé. Attendez la confirmation admin.",
         "upgrade_unavailable_title": "Upgrade requis pour continuer",
@@ -255,7 +255,7 @@ TRANSLATIONS = {
         "create_order": "Create order",
         "free_block_limit": "Your FREE quota is exhausted. Upgrade to continue.",
         "free_block_amount": "FREE plan accepts at most 50,000 XAF per order.",
-        "free_block_limit_no_whatsapp": None,
+        "free_block_limit_no_whatsapp": "Welcome. Select your plan.",
         "free_upgrade_ready": "Your FREE quota is exhausted. You can now move to a paid plan.",
         "premium_plus_blocked": "Creation blocked: PREMIUM_PLUS exists on your profile but is not validated yet. Please wait for admin confirmation.",
         "upgrade_unavailable_title": "Upgrade required to continue",
@@ -1658,13 +1658,11 @@ def render_sidebar(user: dict | None) -> None:
         st.session_state.get("selected_premium_plus_duration", 6) or 6
     )
 
-    # Cas métier important :
-    # si FREE est épuisé et que le client a choisi PREMIUM/PREMIUM_PLUS,
-    # on affiche cette option comme état courant de travail dans le sidebar
+    free_exhausted = bool(user and base_plan == PLAN_FREE and free_left <= 0)
+
     sidebar_plan_display = effective_plan
-    if user and base_plan == PLAN_FREE and free_left <= 0:
-        if selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
-            sidebar_plan_display = selected_plan_option
+    if free_exhausted and selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
+        sidebar_plan_display = selected_plan_option
 
     plan_key = f"plan_{sidebar_plan_display.lower()}"
     plan_label = tr(plan_key) if plan_key in TRANSLATIONS[get_language()] else sidebar_plan_display
@@ -1681,63 +1679,67 @@ def render_sidebar(user: dict | None) -> None:
         unsafe_allow_html=True,
     )
 
-    if selected_plan_option:
-        if selected_plan_option == PLAN_PREMIUM_PLUS:
-            selected_label = f"{PLAN_PREMIUM_PLUS} ({selected_duration} mois)"
-            selected_text = (
-                f"Option {PLAN_PREMIUM_PLUS} sélectionnée ({selected_duration} mois)."
-                if get_language() == "fr"
-                else f"{PLAN_PREMIUM_PLUS} option selected ({selected_duration} months)."
-            )
-        elif selected_plan_option == PLAN_PREMIUM:
-            selected_label = PLAN_PREMIUM
-            selected_text = (
-                "Option PREMIUM sélectionnée."
-                if get_language() == "fr"
-                else "PREMIUM option selected."
-            )
-        else:
-            selected_label = PLAN_FREE
-            selected_text = (
-                "Option FREE sélectionnée."
-                if get_language() == "fr"
-                else "FREE option selected."
-            )
-
-        st.sidebar.markdown(
-            f"""
-            <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                <div style="font-size:0.9rem;color:#475569;">Option choisie</div>
-                <div style="font-size:1.1rem;font-weight:800;">{selected_label}</div>
-                <div class="af-small" style="margin-top:8px;">{selected_text}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # Bloc spécial FREE épuisé : message unique, clair, sans contradiction
-    free_exhausted = bool(user and base_plan == PLAN_FREE and free_left <= 0)
-
     if free_exhausted:
-        if selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
+        if selected_plan_option == PLAN_PREMIUM:
+            status_title = "Statut" if get_language() == "fr" else "Status"
+            status_text = (
+                "Compte prêt pour une commande PREMIUM."
+                if get_language() == "fr"
+                else "Account ready for a PREMIUM order."
+            )
             st.sidebar.markdown(
-                """
+                f"""
                 <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                    <div style="font-size:1.05rem;font-weight:800;">Upgrade activé</div>
+                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
                     <div class="af-small" style="margin-top:8px; font-size:1rem;">
-                        Passez maintenant votre commande sous l'option choisie.
+                        {status_text}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-        else:
+
+        elif selected_plan_option == PLAN_PREMIUM_PLUS:
+            status_title = "Statut" if get_language() == "fr" else "Status"
+
+            if is_premium_plus_active(user):
+                status_text = (
+                    f"Compte PREMIUM_PLUS actif ({selected_duration} mois)."
+                    if get_language() == "fr"
+                    else f"PREMIUM_PLUS account active ({selected_duration} months)."
+                )
+            else:
+                status_text = (
+                    f"PREMIUM_PLUS sélectionné ({selected_duration} mois). Activation en attente."
+                    if get_language() == "fr"
+                    else f"PREMIUM_PLUS selected ({selected_duration} months). Activation pending."
+                )
+
             st.sidebar.markdown(
-                """
+                f"""
                 <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                    <div style="font-size:1.05rem;font-weight:800;">Upgrade activé</div>
+                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
                     <div class="af-small" style="margin-top:8px; font-size:1rem;">
-                        Passez à PREMIUM ou PREMIUM_PLUS.
+                        {status_text}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        else:
+            status_title = "Upgrade" if get_language() == "fr" else "Upgrade"
+            status_text = (
+                "Passez à PREMIUM ou PREMIUM_PLUS."
+                if get_language() == "fr"
+                else "Move to PREMIUM or PREMIUM_PLUS."
+            )
+            st.sidebar.markdown(
+                f"""
+                <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
+                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
+                    <div class="af-small" style="margin-top:8px; font-size:1rem;">
+                        {status_text}
                     </div>
                 </div>
                 """,
@@ -1747,7 +1749,6 @@ def render_sidebar(user: dict | None) -> None:
     if user and base_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user):
         st.sidebar.warning(tr("plan_pending_note"))
 
-    # Bouton / message upgrade seulement s'il n'y a pas déjà le cas FREE épuisé géré ci-dessus
     if not free_exhausted:
         should_show_upgrade_button = bool(
             not user
@@ -1788,6 +1789,7 @@ def render_sidebar(user: dict | None) -> None:
                 st.session_state.pop(key, None)
 
             st.rerun()
+
 
 def render_account_box(user: dict | None) -> dict | None:
     if user:
@@ -2266,7 +2268,7 @@ def render_order_form(user: dict | None) -> None:
                     "Your FREE quota is exhausted. Please choose PREMIUM or PREMIUM_PLUS to continue."
                 )
             else:
-                st.error(tr("free_block_limit_no_whatsapp"))
+                st.success(tr("free_block_limit_no_whatsapp"))
             return
 
         if selected_plan_option == PLAN_FREE:
