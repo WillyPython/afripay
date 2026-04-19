@@ -21,6 +21,8 @@ from services.order_service import (
     get_order_by_code,
     start_order_processing,
 )
+from services.user_service import get_user_by_id, upsert_user, set_user_plan
+
 from services.settings_service import ensure_defaults
 from services.user_service import get_user_by_id, upsert_user
 from ui.branding import render_sidebar_branding
@@ -2288,6 +2290,13 @@ def render_order_form(user: dict | None) -> None:
         "en": ["MTN MoMo", "Orange Money", "Other"],
     }
 
+    momo_provider_mapping = {
+        "MTN MoMo": "MTN",
+        "Orange Money": "ORANGE",
+        "Autre": "OTHER",
+        "Other": "OTHER",
+    }
+
     with st.form("create_order_form"):
         st.radio(
             tr("order_type"),
@@ -2368,13 +2377,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
-
-    # Plan de travail réel de la commande :
-    # - option choisie prioritaire
-    # - sinon plan effectif
-    # - sinon plan de base
     working_plan = selected_plan_option or effective_plan or base_plan
-    free_error = None
 
     # Les règles FREE ne s'appliquent que si la commande est réellement créée en FREE
     if working_plan == PLAN_FREE:
@@ -2397,60 +2400,35 @@ def render_order_form(user: dict | None) -> None:
             st.error(tr("free_block_amount"))
             return
 
-    created_result = None
+    # Synchroniser le plan réel en base avant création
+    if working_plan == PLAN_PREMIUM and base_plan != PLAN_PREMIUM:
+        set_user_plan(int(user["id"]), PLAN_PREMIUM)
+        user = get_user_by_id(int(user["id"])) or user
+        base_plan = get_base_user_plan(user)
+        effective_plan = get_effective_user_plan(user)
 
-    common_payload = {
-        "user_id": int(user["id"]),
-        "client_name": clean_text(user.get("name") or st.session_state.get("client_name", "")),
-        "client_phone": clean_text(user.get("phone") or st.session_state.get("client_phone", "")),
-        "client_email": clean_text(user.get("email") or st.session_state.get("client_email", "")),
-        "site_name": clean_text(site_name),
-        "product_url": clean_text(product_url),
-        "product_title": clean_text(product_title),
-        "product_specs": clean_text(product_specs),
-        "product_price_eur": float(merchant_total_eur or 0),
-        "payment_method": clean_text(payment_method),
-        "country_code": user_country,
-    }
+    momo_provider = momo_provider_mapping.get(clean_text(payment_method), "OTHER")
 
-    payload_variants = [
-        {
-            **common_payload,
-            "shipping_estimate_eur": 0,
-            "delivery_address": clean_text(delivery_address),
-            "freight_forwarder_name": clean_text(forwarder_name),
-            "freight_forwarder_address": clean_text(delivery_address),
-        },
-        {
-            **common_payload,
-            "delivery_address": clean_text(delivery_address),
-            "freight_forwarder_address": clean_text(delivery_address),
-        },
-        {
-            **common_payload,
-            "delivery_address": clean_text(delivery_address),
-        },
-        {
-            **common_payload,
-        },
-    ]
-
-    last_exc = None
-
-    for payload in payload_variants:
-        try:
-            created_result = create_order_for_user(**payload)
-            last_exc = None
-            break
-        except TypeError as exc:
-            last_exc = exc
-            continue
-        except Exception as exc:
-            st.error(str(exc))
-            return
-
-    if created_result is None:
-        st.error(str(last_exc) if last_exc else "Impossible de créer la commande.")
+    try:
+        created_result = create_order_for_user(
+            user_id=int(user["id"]),
+            client_name=clean_text(user.get("name") or st.session_state.get("client_name", "")),
+            client_phone=clean_text(user.get("phone") or st.session_state.get("client_phone", "")),
+            client_email=clean_text(user.get("email") or st.session_state.get("client_email", "")),
+            site_name=clean_text(site_name),
+            product_url=clean_text(product_url),
+            product_title=clean_text(product_title),
+            product_specs=clean_text(product_specs),
+            product_price_eur=float(merchant_total_eur or 0),
+            shipping_estimate_eur=0,
+            delivery_address=clean_text(delivery_address),
+            momo_provider=momo_provider,
+            merchant_total_amount=float(merchant_total_eur or 0),
+            merchant_currency="EUR",
+            country_code=user_country,
+        )
+    except Exception as exc:
+        st.error(str(exc))
         return
 
     order = resolve_created_order(created_result)
@@ -2458,7 +2436,6 @@ def render_order_form(user: dict | None) -> None:
         (order or {}).get("order_code") or created_result
     )
     render_order_success(user, order or {"order_code": clean_text(created_result)})
-
 
 def render_order_success(user: dict | None, order: dict | None) -> None:
     if not order:
@@ -2492,7 +2469,11 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
         st.warning(tr("proof_unavailable_text"))
         return
 
-    cart_message = build_cart_validation_message(user, order.get("site_name", ""), order.get("product_url", ""))
+    cart_message = build_cart_validation_message(
+        user,
+        order.get("site_name", ""),
+        order.get("product_url", ""),
+    )
     proof_message = build_payment_proof_message(order, user)
     cart_url = build_whatsapp_url(whatsapp_number, cart_message)
     proof_url = build_whatsapp_url(whatsapp_number, proof_message)
@@ -2506,7 +2487,6 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
             st.link_button(tr("send_payment_proof"), proof_url, width=UI_WIDTH_STRETCH)
 
     st.caption(tr("proof_intro"))
-
 
 def render_orders_table(user: dict | None) -> None:
     st.markdown(f"### {tr('recent_orders')}")
