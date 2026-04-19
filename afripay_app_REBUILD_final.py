@@ -2218,7 +2218,7 @@ def render_order_form(user: dict | None) -> None:
                 </div>
                 <div class="af-small" style="font-size:1rem;">
                     Votre commande sera créée sous l'option PREMIUM_PLUS ({selected_premium_plus_duration} mois).
-                    Tant que l'abonnement n'est pas actif, le comportement PREMIUM s'applique.
+                    L'activation définitive dépend de la validation du paiement de l'abonnement.
                 </div>
             </div>
             """,
@@ -2280,7 +2280,7 @@ def render_order_form(user: dict | None) -> None:
                     "The FREE quota is exhausted. To continue, choose PREMIUM or PREMIUM_PLUS."
                 )
             else:
-                st.error(tr("free_block_limit_no_whatsapp"))
+                st.success(tr("free_block_limit_no_whatsapp"))
             return
 
     payment_options = {
@@ -2368,24 +2368,34 @@ def render_order_form(user: dict | None) -> None:
         return
 
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
-    free_error = validate_free_order_rules(user, estimated_xaf)
 
-    if free_error == "FREE_LIMIT_REACHED":
-        if upgrade_available:
-            st.warning(
-                "Le quota FREE est épuisé. Passez maintenant à PREMIUM ou PREMIUM_PLUS pour continuer."
-                if get_language() == "fr"
-                else
-                "The FREE quota is exhausted. Please move to PREMIUM or PREMIUM_PLUS to continue."
-            )
-            st.session_state["premium_page_open"] = True
-        else:
-            st.error(tr("order_blocked_upgrade_unavailable"))
-        return
+    # Plan de travail réel de la commande :
+    # - option choisie prioritaire
+    # - sinon plan effectif
+    # - sinon plan de base
+    working_plan = selected_plan_option or effective_plan or base_plan
+    free_error = None
 
-    if free_error == "FREE_AMOUNT_LIMIT_EXCEEDED":
-        st.error(tr("free_block_amount"))
-        return
+    # Les règles FREE ne s'appliquent que si la commande est réellement créée en FREE
+    if working_plan == PLAN_FREE:
+        free_error = validate_free_order_rules(user, estimated_xaf)
+
+        if free_error == "FREE_LIMIT_REACHED":
+            if upgrade_available:
+                st.warning(
+                    "Le quota FREE est épuisé. Passez maintenant à PREMIUM ou PREMIUM_PLUS pour continuer."
+                    if get_language() == "fr"
+                    else
+                    "The FREE quota is exhausted. Please move to PREMIUM or PREMIUM_PLUS to continue."
+                )
+                st.session_state["premium_page_open"] = True
+            else:
+                st.error(tr("order_blocked_upgrade_unavailable"))
+            return
+
+        if free_error == "FREE_AMOUNT_LIMIT_EXCEEDED":
+            st.error(tr("free_block_amount"))
+            return
 
     created_result = None
 
@@ -2448,6 +2458,7 @@ def render_order_form(user: dict | None) -> None:
         (order or {}).get("order_code") or created_result
     )
     render_order_success(user, order or {"order_code": clean_text(created_result)})
+
 
 def render_order_success(user: dict | None, order: dict | None) -> None:
     if not order:
