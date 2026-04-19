@@ -1660,10 +1660,25 @@ def render_sidebar(user: dict | None) -> None:
         st.session_state.get("selected_premium_plus_duration", 6) or 6
     )
 
+    premium_plus_active = bool(user and is_premium_plus_active(user))
+    premium_plus_pending = bool(
+        user
+        and (
+            (base_plan == PLAN_PREMIUM_PLUS and not premium_plus_active)
+            or selected_plan_option == PLAN_PREMIUM_PLUS
+        )
+    )
+
     free_exhausted = bool(user and base_plan == PLAN_FREE and free_left <= 0)
 
     sidebar_plan_display = effective_plan
-    if free_exhausted and selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
+
+    # Si l'utilisateur a choisi une option de travail, on l'affiche clairement
+    if selected_plan_option == PLAN_PREMIUM:
+        sidebar_plan_display = PLAN_PREMIUM
+    elif selected_plan_option == PLAN_PREMIUM_PLUS:
+        sidebar_plan_display = PLAN_PREMIUM_PLUS
+    elif free_exhausted and selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
         sidebar_plan_display = selected_plan_option
 
     plan_key = f"plan_{sidebar_plan_display.lower()}"
@@ -1681,81 +1696,98 @@ def render_sidebar(user: dict | None) -> None:
         unsafe_allow_html=True,
     )
 
-    if free_exhausted:
-        if selected_plan_option == PLAN_PREMIUM:
-            status_title = "Statut" if get_language() == "fr" else "Status"
-            status_text = (
-                "Compte prêt pour une commande PREMIUM."
-                if get_language() == "fr"
-                else "Account ready for a PREMIUM order."
-            )
-            st.sidebar.markdown(
-                f"""
-                <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
-                    <div class="af-small" style="margin-top:8px; font-size:1rem;">
-                        {status_text}
-                    </div>
+    # ==========================================
+    # Bloc PREMIUM standard sélectionné
+    # ==========================================
+    if selected_plan_option == PLAN_PREMIUM:
+        status_title = "Statut" if get_language() == "fr" else "Status"
+        status_text = (
+            "Compte prêt pour une commande PREMIUM."
+            if get_language() == "fr"
+            else "Account ready for a PREMIUM order."
+        )
+        st.sidebar.markdown(
+            f"""
+            <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
+                <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
+                <div class="af-small" style="margin-top:8px; font-size:1rem;">
+                    {status_text}
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        elif selected_plan_option == PLAN_PREMIUM_PLUS:
-            status_title = "Statut" if get_language() == "fr" else "Status"
+    # ==========================================
+    # Bloc PREMIUM_PLUS sélectionné / en attente
+    # ==========================================
+    elif selected_plan_option == PLAN_PREMIUM_PLUS or premium_plus_pending:
+        subscription_price_eur = 30 if selected_duration == 6 else 60
+        subscription_price_xaf = estimate_merchant_total_xaf(subscription_price_eur)
 
-            if is_premium_plus_active(user):
-                status_text = (
-                    f"Compte PREMIUM_PLUS actif ({selected_duration} mois)."
-                    if get_language() == "fr"
-                    else f"PREMIUM_PLUS account active ({selected_duration} months)."
-                )
-            else:
-                status_text = (
-                    f"PREMIUM_PLUS sélectionné ({selected_duration} mois). Activation en attente."
-                    if get_language() == "fr"
-                    else f"PREMIUM_PLUS selected ({selected_duration} months). Activation pending."
-                )
+        option_title = "Option choisie" if get_language() == "fr" else "Selected option"
+        duration_label = "Durée" if get_language() == "fr" else "Duration"
+        status_label = "Statut" if get_language() == "fr" else "Status"
+        amount_label = "Montant abonnement" if get_language() == "fr" else "Subscription amount"
 
-            st.sidebar.markdown(
-                f"""
-                <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
-                    <div class="af-small" style="margin-top:8px; font-size:1rem;">
-                        {status_text}
-                    </div>
+        status_text = (
+            "Actif"
+            if premium_plus_active
+            else "En attente d’activation"
+            if get_language() == "fr"
+            else "Pending activation"
+        )
+        if premium_plus_active and get_language() != "fr":
+            status_text = "Active"
+
+        st.sidebar.markdown(
+            f"""
+            <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
+                <div style="font-size:1.05rem;font-weight:800;">{option_title}</div>
+                <div style="font-size:1.1rem;font-weight:800;margin-top:8px;">PREMIUM_PLUS</div>
+                <div class="af-small" style="margin-top:8px;">{duration_label} : {selected_duration} mois</div>
+                <div class="af-small" style="margin-top:6px;">{status_label} : {status_text}</div>
+                <div class="af-small" style="margin-top:6px;">{amount_label} : {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ==========================================
+    # Bloc FREE épuisé sans option sélectionnée
+    # ==========================================
+    elif free_exhausted:
+        status_title = "Upgrade" if get_language() == "fr" else "Upgrade"
+        status_text = (
+            "Passez à PREMIUM ou PREMIUM_PLUS."
+            if get_language() == "fr"
+            else "Move to PREMIUM or PREMIUM_PLUS."
+        )
+        st.sidebar.markdown(
+            f"""
+            <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
+                <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
+                <div class="af-small" style="margin-top:8px; font-size:1rem;">
+                    {status_text}
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        else:
-            status_title = "Upgrade" if get_language() == "fr" else "Upgrade"
-            status_text = (
-                "Passez à PREMIUM ou PREMIUM_PLUS."
-                if get_language() == "fr"
-                else "Move to PREMIUM or PREMIUM_PLUS."
-            )
-            st.sidebar.markdown(
-                f"""
-                <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                    <div style="font-size:1.05rem;font-weight:800;">{status_title}</div>
-                    <div class="af-small" style="margin-top:8px; font-size:1rem;">
-                        {status_text}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    if user and base_plan == PLAN_PREMIUM_PLUS and not premium_plus_active:
+        pending_note = (
+            tr("plan_pending_note")
+            if tr("plan_pending_note") != "plan_pending_note"
+            else "PREMIUM_PLUS en attente d’activation."
+        )
+        st.sidebar.warning(pending_note)
 
-    if user and base_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user):
-        st.sidebar.warning(tr("plan_pending_note"))
-
-    if not free_exhausted:
+    if not free_exhausted and selected_plan_option != PLAN_PREMIUM_PLUS:
         should_show_upgrade_button = bool(
             not user
             or effective_plan == PLAN_FREE
-            or (base_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user))
+            or (base_plan == PLAN_PREMIUM_PLUS and not premium_plus_active)
         )
 
         if should_show_upgrade_button:
@@ -1791,7 +1823,6 @@ def render_sidebar(user: dict | None) -> None:
                 st.session_state.pop(key, None)
 
             st.rerun()
-
 
 def render_account_box(user: dict | None) -> dict | None:
     if user:
@@ -1929,12 +1960,16 @@ def render_plan_cards(user: dict | None) -> None:
     selected_plan_option = clean_text(
         st.session_state.get("selected_plan_option", "")
     ).upper()
+
     selected_duration = int(
         st.session_state.get("selected_premium_plus_duration", 6) or 6
     )
 
     price_6 = get_premium_plus_price(6) or "30 EUR"
     price_12 = get_premium_plus_price(12) or "60 EUR"
+
+    estimated_xaf_6 = estimate_merchant_total_xaf(30)
+    estimated_xaf_12 = estimate_merchant_total_xaf(60)
 
     cards = [
         {
@@ -1957,8 +1992,8 @@ def render_plan_cards(user: dict | None) -> None:
             "title": tr("plan_premium_plus"),
             "desc": (
                 f"{tr('plan_premium_plus_desc')}"
-                f"<br><br><strong>6 mois = {price_6}</strong>"
-                f"<br><strong>12 mois = {price_12}</strong>"
+                f"<br><br><strong>6 mois = {price_6} ≈ {format_xaf(estimated_xaf_6)} XAF</strong>"
+                f"<br><strong>12 mois = {price_12} ≈ {format_xaf(estimated_xaf_12)} XAF</strong>"
             ),
             "meta": "👑",
             "is_current": bool(premium_plus_active),
@@ -2036,7 +2071,7 @@ def render_plan_cards(user: dict | None) -> None:
                     st.rerun()
 
             elif idx == 2:
-                duration = st.radio(
+                st.radio(
                     "Durée active",
                     options=[6, 12],
                     index=0 if selected_duration == 6 else 1,
@@ -2050,7 +2085,6 @@ def render_plan_cards(user: dict | None) -> None:
                     width=UI_WIDTH_STRETCH,
                 ):
                     st.session_state["selected_plan_option"] = PLAN_PREMIUM_PLUS
-                    st.session_state["selected_premium_plus_duration"] = duration
                     st.session_state["premium_page_open"] = False
                     st.rerun()
 
@@ -2058,7 +2092,66 @@ def render_plan_cards(user: dict | None) -> None:
         st.info("Option choisie : PREMIUM")
 
     elif selected_plan_option == PLAN_PREMIUM_PLUS:
-        st.info(f"Option choisie : PREMIUM_PLUS ({selected_duration} mois)")
+        subscription_price_eur = 30 if selected_duration == 6 else 60
+        subscription_price_xaf = estimate_merchant_total_xaf(subscription_price_eur)
+
+        st.info(
+            f"Option choisie : PREMIUM_PLUS\n\n"
+            f"Durée : {selected_duration} mois\n\n"
+            f"Montant abonnement : {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF\n\n"
+            f"Statut : en attente d’activation"
+        )
+
+        st.warning(
+            "Pour activer PREMIUM_PLUS : effectuez d’abord le paiement de l’abonnement, "
+            "envoyez la preuve de paiement, puis attendez la validation admin. "
+            "La création de commande restera bloquée tant que l’abonnement n’est pas activé."
+        )
+
+        st.markdown(
+            f"""
+            <div class="af-card" style="background:rgba(26,188,156,0.10); border:1px solid rgba(26,188,156,0.35);">
+                <div style="font-size:1.08rem;font-weight:800;margin-bottom:8px;">
+                    Activation PREMIUM_PLUS
+                </div>
+                <div class="af-small" style="font-size:1rem; line-height:1.6;">
+                    PREMIUM_PLUS est conçu pour l’espace client VIP.<br><br>
+                    Cette formule vous donne accès à un traitement prioritaire, un suivi renforcé et une réactivité supérieure sur vos commandes.<br><br>
+                    Choisir PREMIUM_PLUS, c’est intégrer un flow e-commerce premium réservé aux clients qui recherchent rapidité, visibilité et accompagnement privilégié.<br><br>
+                    <strong>Montant à payer :</strong> {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF<br>
+                    <strong>Durée choisie :</strong> {selected_duration} mois<br>
+                    <strong>Date de début :</strong> après validation du paiement<br>
+                    <strong>Date de fin estimée :</strong> {selected_duration} mois après activation<br>
+                    <strong>Activation de commande :</strong> possible seulement après validation admin
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        btn_col1, btn_col2 = st.columns(2)
+
+        with btn_col1:
+            if st.button(
+                "Payer mon abonnement PREMIUM_PLUS",
+                key="pay_premium_plus_subscription",
+                width=UI_WIDTH_STRETCH,
+            ):
+                st.session_state["premium_plus_payment_requested"] = True
+                st.success(
+                    "Paiement abonnement PREMIUM_PLUS initié. Passez maintenant à l’envoi de la preuve de paiement."
+                )
+
+        with btn_col2:
+            if st.button(
+                "Envoyer la preuve de paiement",
+                key="send_premium_plus_payment_proof",
+                width=UI_WIDTH_STRETCH,
+            ):
+                st.session_state["premium_plus_payment_requested"] = True
+                st.info(
+                    "Envoyez la preuve de paiement PREMIUM_PLUS au support AfriPay pour validation."
+                )
 
     elif selected_plan_option == PLAN_FREE:
         st.info("Option choisie : FREE")
@@ -2188,9 +2281,9 @@ def render_order_form(user: dict | None) -> None:
     effective_plan = get_effective_user_plan(user)
     free_left = get_free_orders_remaining(user)
 
+    premium_plus_active = is_premium_plus_active(user)
     premium_plus_pending = (
-        base_plan == PLAN_PREMIUM_PLUS
-        and not is_premium_plus_active(user)
+        base_plan == PLAN_PREMIUM_PLUS and not premium_plus_active
     )
 
     # =====================================================
@@ -2212,15 +2305,21 @@ def render_order_form(user: dict | None) -> None:
         )
 
     elif selected_plan_option == PLAN_PREMIUM_PLUS:
+        subscription_price_eur = 30 if selected_premium_plus_duration == 6 else 60
+        subscription_price_xaf = estimate_merchant_total_xaf(subscription_price_eur)
+
         st.markdown(
             f"""
             <div class="af-card">
                 <div style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">
                     PREMIUM_PLUS sélectionné
                 </div>
-                <div class="af-small" style="font-size:1rem;">
-                    Votre commande sera créée sous l'option PREMIUM_PLUS ({selected_premium_plus_duration} mois).
-                    L'activation définitive dépend de la validation du paiement de l'abonnement.
+                <div class="af-small" style="font-size:1rem; line-height:1.65;">
+                    <strong>Durée :</strong> {selected_premium_plus_duration} mois<br>
+                    <strong>Montant abonnement :</strong> {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF<br>
+                    <strong>Date de début :</strong> après validation du paiement<br>
+                    <strong>Date de fin estimée :</strong> {selected_premium_plus_duration} mois après activation<br>
+                    <strong>Activation de commande :</strong> possible seulement après validation admin
                 </div>
             </div>
             """,
@@ -2243,7 +2342,26 @@ def render_order_form(user: dict | None) -> None:
         )
 
     # =====================================================
-    # Cas PREMIUM_PLUS en attente
+    # Cas PREMIUM_PLUS : formulaire bloqué tant que non activé
+    # =====================================================
+    if selected_plan_option == PLAN_PREMIUM_PLUS and not premium_plus_active:
+        st.warning(
+            "Votre formule PREMIUM_PLUS est en attente d’activation. "
+            "Effectuez d’abord le paiement de l’abonnement, envoyez la preuve de paiement, "
+            "puis attendez la validation admin. "
+            "Le formulaire de commande sera activé après confirmation du paiement."
+            if get_language() == "fr"
+            else
+            "Your PREMIUM_PLUS plan is pending activation. "
+            "Please complete the subscription payment first, send proof of payment, "
+            "then wait for admin validation. "
+            "The order form will be activated after payment confirmation."
+        )
+        st.session_state["premium_page_open"] = True
+        return
+
+    # =====================================================
+    # Cas PREMIUM_PLUS déjà stocké en base mais pas encore actif
     # =====================================================
     if premium_plus_pending:
         st.warning(
@@ -2436,6 +2554,8 @@ def render_order_form(user: dict | None) -> None:
         (order or {}).get("order_code") or created_result
     )
     render_order_success(user, order or {"order_code": clean_text(created_result)})
+
+
 
 def render_order_success(user: dict | None, order: dict | None) -> None:
     if not order:
