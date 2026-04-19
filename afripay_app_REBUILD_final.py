@@ -21,10 +21,9 @@ from services.order_service import (
     get_order_by_code,
     start_order_processing,
 )
-from services.user_service import get_user_by_id, upsert_user, set_user_plan
+from services.user_service import activate_premium_plus, get_user_by_id, upsert_user, set_user_plan
 
 from services.settings_service import ensure_defaults
-from services.user_service import get_user_by_id, upsert_user
 from ui.branding import render_sidebar_branding
 
 try:
@@ -77,6 +76,7 @@ ADMIN_VIEW_IN_PROGRESS = "in_progress"
 ADMIN_VIEW_CANCELLED = "cancelled"
 ADMIN_VIEW_HISTORY = "history"
 ADMIN_VIEW_REFUNDS = "refunds"
+ADMIN_VIEW_PREMIUM_PLUS = "premium_plus"
 
 REFUND_STATUS_NONE = "NONE"
 REFUND_STATUS_PENDING = "PENDING"
@@ -1636,6 +1636,9 @@ def render_sidebar(user: dict | None) -> None:
         if st.sidebar.button("💸 Remboursements", width=UI_WIDTH_STRETCH):
             st.session_state["admin_view"] = ADMIN_VIEW_REFUNDS
             st.session_state["admin_filter"] = "ALL"
+        if st.sidebar.button("👑 PREMIUM_PLUS", width=UI_WIDTH_STRETCH):
+            st.session_state["admin_view"] = ADMIN_VIEW_PREMIUM_PLUS
+            st.session_state["admin_filter"] = "ALL"
 
         return
 
@@ -2992,9 +2995,147 @@ def render_admin_refunds() -> None:
     for row in refund_rows[:50]:
         render_admin_order_card(row)
 
+def render_admin_premium_plus() -> None:
+    st.markdown("## 👑 PREMIUM_PLUS")
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                id,
+                name,
+                phone,
+                email,
+                plan,
+                subscription_duration,
+                subscription_paid,
+                subscription_payment_status,
+                subscription_start_date,
+                subscription_end_date,
+                created_at
+            FROM users
+            WHERE UPPER(COALESCE(plan, '')) = 'PREMIUM_PLUS'
+            ORDER BY id DESC
+            LIMIT 300
+            """
+        )
+        premium_rows = cur.fetchall()
+
+    if not premium_rows:
+        st.info("Aucun client PREMIUM_PLUS pour le moment.")
+        return
+
+    total_clients = len(premium_rows)
+    active_count = 0
+    pending_count = 0
+
+    for user in premium_rows:
+        try:
+            if is_premium_plus_active(int(user["id"])):
+                active_count += 1
+            else:
+                pending_count += 1
+        except Exception:
+            pending_count += 1
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Clients PREMIUM_PLUS", total_clients)
+    with col2:
+        st.metric("Actifs", active_count)
+    with col3:
+        st.metric("En attente", pending_count)
+
+    for user in premium_rows:
+        user_id = int(user["id"])
+        client_name = clean_text(user.get("name") or "-")
+        client_phone = clean_text(user.get("phone") or "-")
+        client_email = clean_text(user.get("email") or "-")
+
+        raw_duration = clean_text(user.get("subscription_duration") or "")
+        if raw_duration == "6M":
+            duration_label = "6 mois"
+            activation_duration = "6M"
+        elif raw_duration == "12M":
+            duration_label = "12 mois"
+            activation_duration = "12M"
+        else:
+            duration_label = raw_duration or "-"
+            activation_duration = "6M"
+
+        payment_status = clean_text(
+            user.get("subscription_payment_status") or "PENDING"
+        ).upper()
+
+        start_date = format_date_display(user.get("subscription_start_date"))
+        end_date = format_date_display(user.get("subscription_end_date"))
+
+        try:
+            active = is_premium_plus_active(user_id)
+        except Exception:
+            active = False
+
+        status_badge = "ACTIF" if active else "EN ATTENTE"
+
+        amount_eur = 30 if activation_duration == "6M" else 60
+        amount_xaf = estimate_merchant_total_xaf(amount_eur)
+
+        st.markdown(
+            f"""
+            <div class="af-card">
+                <div style="font-size:1.08rem;font-weight:800;margin-bottom:6px;">
+                    👤 {client_name}
+                </div>
+                <div class="af-small" style="line-height:1.7;">
+                    📞 {client_phone}<br>
+                    ✉️ {client_email}<br>
+                    ⏳ Durée : {duration_label}<br>
+                    💳 Paiement : {payment_status}<br>
+                    💰 Abonnement : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF<br>
+                    📅 Début : {start_date}<br>
+                    🏁 Fin : {end_date}<br>
+                    🚀 Statut : {status_badge}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if not active:
+            col_a, col_b = st.columns(2)
+
+            with col_a:
+                if st.button(
+                    f"✅ Activer PREMIUM_PLUS #{user_id}",
+                    key=f"activate_pp_{user_id}",
+                    width=UI_WIDTH_STRETCH,
+                ):
+                    try:
+                        activate_premium_plus(
+                            user_id=user_id,
+                            duration=activation_duration,
+                        )
+                        st.success(f"PREMIUM_PLUS activé pour {client_name}.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+
+            with col_b:
+                if st.button(
+                    f"❌ Rejeter / retour PREMIUM #{user_id}",
+                    key=f"reject_pp_{user_id}",
+                    width=UI_WIDTH_STRETCH,
+                ):
+                    try:
+                        set_user_plan(user_id, PLAN_PREMIUM)
+                        st.warning(f"Retour en PREMIUM pour {client_name}.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
 def render_admin_current_view() -> None:
     view = clean_text(st.session_state.get("admin_view", ADMIN_VIEW_DASHBOARD)).lower()
+
     if view == ADMIN_VIEW_PAYMENT_SUMMARY:
         render_admin_payment_summary()
     elif view == ADMIN_VIEW_PAYMENT_PROOFS:
@@ -3007,6 +3148,8 @@ def render_admin_current_view() -> None:
         render_admin_history()
     elif view == ADMIN_VIEW_REFUNDS:
         render_admin_refunds()
+    elif view == ADMIN_VIEW_PREMIUM_PLUS:
+        render_admin_premium_plus()
     else:
         render_admin_dashboard()
 
