@@ -2057,6 +2057,127 @@ def render_plan_cards(user: dict | None) -> None:
     estimated_xaf_6 = estimate_merchant_total_xaf(30)
     estimated_xaf_12 = estimate_merchant_total_xaf(60)
 
+    def _get_central_whatsapp_number() -> str:
+        """
+        Récupère uniquement le numéro WhatsApp central configuré côté settings.
+        Aucun numéro n'est codé en dur.
+        """
+        candidate_keys = [
+            "whatsapp_central_number",
+            "central_whatsapp_number",
+            "support_whatsapp_number",
+            "whatsapp_default",
+            "whatsapp_number_default",
+            "WHATSAPP_DEFAULT",
+        ]
+
+        if admin_get_setting is None:
+            return ""
+
+        for key in candidate_keys:
+            try:
+                value = admin_get_setting(key)
+                if value:
+                    value = str(value).strip()
+                    if value:
+                        return value
+            except Exception:
+                continue
+
+        return ""
+
+    def _sanitize_whatsapp_number(raw_number: str) -> str:
+        if not raw_number:
+            return ""
+        return "".join(ch for ch in str(raw_number) if ch.isdigit())
+
+    def _build_whatsapp_link(message: str) -> str:
+        central_number = _sanitize_whatsapp_number(_get_central_whatsapp_number())
+        if not central_number:
+            return ""
+        encoded_message = urllib.parse.quote(message)
+        return f"https://wa.me/{central_number}?text={encoded_message}"
+
+    def _get_user_display_name() -> str:
+        if not user:
+            return "Client AfriPay"
+        return (
+            clean_text(user.get("full_name"))
+            or clean_text(user.get("name"))
+            or clean_text(user.get("client_name"))
+            or "Client AfriPay"
+        )
+
+    def _get_user_phone() -> str:
+        if not user:
+            return ""
+        return (
+            clean_text(user.get("phone"))
+            or clean_text(user.get("phone_number"))
+            or clean_text(user.get("whatsapp"))
+            or ""
+        )
+
+    def _get_user_reference() -> str:
+        if not user:
+            return ""
+        return (
+            clean_text(user.get("customer_code"))
+            or clean_text(user.get("client_code"))
+            or clean_text(user.get("ref"))
+            or clean_text(user.get("id"))
+            or ""
+        )
+
+    def _build_premium_plus_payment_message(
+        duration_months: int,
+        amount_eur: int,
+        amount_xaf: int,
+    ) -> str:
+        customer_name = _get_user_display_name()
+        customer_phone = _get_user_phone()
+        customer_ref = _get_user_reference()
+
+        lines = [
+            "Bonjour AfriPay Afrika,",
+            "",
+            "Je souhaite payer mon abonnement PREMIUM_PLUS.",
+            "",
+            f"Nom client : {customer_name}",
+            f"Téléphone : {customer_phone or 'Non renseigné'}",
+            f"Référence client : {customer_ref or 'Non renseignée'}",
+            f"Formule choisie : PREMIUM_PLUS {duration_months} mois",
+            f"Montant abonnement : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF",
+            "",
+            "Merci de me communiquer la procédure de paiement à suivre.",
+        ]
+        return "\n".join(lines)
+
+    def _build_premium_plus_proof_message(
+        duration_months: int,
+        amount_eur: int,
+        amount_xaf: int,
+    ) -> str:
+        customer_name = _get_user_display_name()
+        customer_phone = _get_user_phone()
+        customer_ref = _get_user_reference()
+
+        lines = [
+            "Bonjour AfriPay Afrika,",
+            "",
+            "Je vous transmets la preuve de paiement de mon abonnement PREMIUM_PLUS pour validation.",
+            "",
+            f"Nom client : {customer_name}",
+            f"Téléphone : {customer_phone or 'Non renseigné'}",
+            f"Référence client : {customer_ref or 'Non renseignée'}",
+            f"Formule choisie : PREMIUM_PLUS {duration_months} mois",
+            f"Montant annoncé : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF",
+            "",
+            "La capture ou preuve de paiement est jointe à ce message.",
+            "Merci de confirmer l’activation après vérification.",
+        ]
+        return "\n".join(lines)
+
     cards = [
         {
             "title": tr("plan_free"),
@@ -2190,8 +2311,8 @@ def render_plan_cards(user: dict | None) -> None:
 
         st.warning(
             "Pour activer PREMIUM_PLUS : effectuez d’abord le paiement de l’abonnement, "
-            "envoyez la preuve de paiement, puis attendez la validation admin. "
-            "La création de commande restera bloquée tant que l’abonnement n’est pas activé."
+            "envoyez ensuite la preuve de paiement, puis attendez la validation admin. "
+            "La création de commande reste bloquée tant que l’abonnement n’est pas activé."
         )
 
         st.markdown(
@@ -2201,43 +2322,69 @@ def render_plan_cards(user: dict | None) -> None:
                     Activation PREMIUM_PLUS
                 </div>
                 <div class="af-small" style="font-size:1rem; line-height:1.6;">
-                    PREMIUM_PLUS est conçu pour l’espace client VIP.<br><br>
-                    Cette formule vous donne accès à un traitement prioritaire, un suivi renforcé et une réactivité supérieure sur vos commandes.<br><br>
-                    Choisir PREMIUM_PLUS, c’est intégrer un flow e-commerce premium réservé aux clients qui recherchent rapidité, visibilité et accompagnement privilégié.<br><br>
+                    PREMIUM_PLUS est conçu pour les clients qui souhaitent un niveau de service renforcé.<br><br>
+                    Cette formule donne accès à un traitement prioritaire, un meilleur niveau de suivi et une réactivité supérieure sur vos opérations.<br><br>
                     <strong>Montant à payer :</strong> {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF<br>
                     <strong>Durée choisie :</strong> {selected_duration} mois<br>
                     <strong>Date de début :</strong> après validation du paiement<br>
                     <strong>Date de fin estimée :</strong> {selected_duration} mois après activation<br>
-                    <strong>Activation de commande :</strong> possible seulement après validation admin
+                    <strong>Création de commande :</strong> autorisée uniquement après validation admin
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        btn_col1, btn_col2 = st.columns(2)
+        central_whatsapp_number = _sanitize_whatsapp_number(_get_central_whatsapp_number())
+        payment_message = _build_premium_plus_payment_message(
+            selected_duration,
+            subscription_price_eur,
+            subscription_price_xaf,
+        )
+        proof_message = _build_premium_plus_proof_message(
+            selected_duration,
+            subscription_price_eur,
+            subscription_price_xaf,
+        )
 
-        with btn_col1:
-            if st.button(
-                "Payer mon abonnement PREMIUM_PLUS",
-                key="pay_premium_plus_subscription",
-                width=UI_WIDTH_STRETCH,
-            ):
-                st.session_state["premium_plus_payment_requested"] = True
-                st.success(
-                    "Paiement abonnement PREMIUM_PLUS initié. Passez maintenant à l’envoi de la preuve de paiement."
+        payment_whatsapp_url = _build_whatsapp_link(payment_message)
+        proof_whatsapp_url = _build_whatsapp_link(proof_message)
+
+        if not central_whatsapp_number:
+            st.error(
+                "Le numéro WhatsApp central AfriPay n’est pas encore configuré dans les paramètres. "
+                "Merci de le définir dans settings avant d’utiliser le flow PREMIUM_PLUS."
+            )
+        else:
+            st.markdown(
+                """
+                <div class="af-small" style="margin-top:8px; margin-bottom:12px; line-height:1.6;">
+                    Utilisez les boutons ci-dessous pour contacter le support central AfriPay via WhatsApp
+                    avec un message prérempli, professionnel et prêt à l’envoi.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            btn_col1, btn_col2 = st.columns(2)
+
+            with btn_col1:
+                st.link_button(
+                    "Payer mon abonnement PREMIUM_PLUS",
+                    payment_whatsapp_url,
+                    use_container_width=True,
                 )
 
-        with btn_col2:
-            if st.button(
-                "Envoyer la preuve de paiement",
-                key="send_premium_plus_payment_proof",
-                width=UI_WIDTH_STRETCH,
-            ):
-                st.session_state["premium_plus_payment_requested"] = True
-                st.info(
-                    "Envoyez la preuve de paiement PREMIUM_PLUS au support AfriPay pour validation."
+            with btn_col2:
+                st.link_button(
+                    "Envoyer la preuve de paiement",
+                    proof_whatsapp_url,
+                    use_container_width=True,
                 )
+
+            st.caption(
+                "Le routage WhatsApp utilise exclusivement le numéro central configuré dans les settings."
+            )
 
     elif selected_plan_option == PLAN_FREE:
         st.info("Option choisie : FREE")
