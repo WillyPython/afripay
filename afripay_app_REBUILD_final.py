@@ -672,37 +672,75 @@ def get_setting(key: str, default: str = "") -> str:
 
 def get_country_whatsapp_number(country_code: str) -> str:
     cc = normalize_country_code(country_code)
-    candidates = [
+
+    # Numéro local pays d'abord si configuré
+    local_candidates = [
         f"whatsapp_number_{cc.lower()}",
         f"whatsapp_number_{cc}",
         f"WHATSAPP_{cc}",
+    ]
+
+    for key in local_candidates:
+        value = sanitize_whatsapp_phone(get_setting(key, ""))
+        if value:
+            return value
+
+    # Sinon fallback central / support
+    central_candidates = [
         "support_whatsapp_number",
         "SUPPORT_WHATSAPP_NUMBER",
         "whatsapp_default",
         "WHATSAPP_DEFAULT",
     ]
+
+    for key in central_candidates:
+        value = sanitize_whatsapp_phone(get_setting(key, ""))
+        if value:
+            return value
+
+    return ""
+
+def get_support_whatsapp_number() -> str:
+    candidates = [
+        "whatsapp_validation_number",
+        "WHATSAPP_VALIDATION_NUMBER",
+        "support_whatsapp_number",
+        "SUPPORT_WHATSAPP_NUMBER",
+        "whatsapp_default",
+        "WHATSAPP_DEFAULT",
+    ]
+
     for key in candidates:
         value = sanitize_whatsapp_phone(get_setting(key, ""))
         if value:
             return value
-    return ""
 
-
-def get_support_whatsapp_number() -> str:
-    for key in ["support_whatsapp_number", "SUPPORT_WHATSAPP_NUMBER", "whatsapp_default", "WHATSAPP_DEFAULT"]:
-        value = sanitize_whatsapp_phone(get_setting(key, ""))
-        if value:
-            return value
     return ""
 
 
 def get_best_whatsapp_number(country_code: str) -> str:
-    return get_country_whatsapp_number(country_code) or get_support_whatsapp_number()
+    cc = normalize_country_code(country_code)
 
+    # 1. tenter numéro local pays
+    local_number = get_country_whatsapp_number(cc)
+    if local_number:
+        return local_number
+
+    # 2. fallback central validation/support
+    central_number = get_support_whatsapp_number()
+    if central_number:
+        return central_number
+
+    return ""
 
 def has_any_whatsapp_configured(country_code: str | None = None) -> bool:
-    cc = normalize_country_code(country_code or get_default_country())
-    return bool(get_best_whatsapp_number(cc))
+    cc = normalize_country_code(
+        country_code or get_default_country()
+    )
+
+    whatsapp_number = get_best_whatsapp_number(cc)
+
+    return bool(whatsapp_number)
 
 
 def get_brand_name() -> str:
@@ -726,10 +764,18 @@ def get_admin_password_value() -> str:
 
 def build_whatsapp_url(phone: str, message: str) -> str:
     safe_phone = sanitize_whatsapp_phone(phone)
+
     if not safe_phone:
         return ""
-    return f"https://wa.me/{safe_phone}?text={urllib.parse.quote(clean_text(message))}"
 
+    clean_message = clean_text(message)
+
+    if not clean_message:
+        return f"https://wa.me/{safe_phone}"
+
+    encoded_message = urllib.parse.quote(clean_message)
+
+    return f"https://wa.me/{safe_phone}?text={encoded_message}"
 
 def ensure_app_session() -> None:
     init_session()
@@ -1085,18 +1131,38 @@ def estimate_merchant_total_xaf(merchant_total_eur: float) -> int:
     return _round_xaf(float(merchant_total_eur or 0) * rate_value)
 
 
-def build_cart_validation_message(user: dict | None, merchant_name: str, product_url: str) -> str:
+def build_cart_validation_message(
+    user: dict | None,
+    merchant_name: str,
+    product_url: str,
+) -> str:
     brand = get_brand_name()
-    client_name = clean_text((user or {}).get("name") or st.session_state.get("client_name", "Client"))
+
+    client_name = clean_text(
+        (user or {}).get("name")
+        or st.session_state.get("client_name", "Client")
+    )
+
+    client_phone = clean_text(
+        (user or {}).get("phone")
+        or st.session_state.get("client_phone", "")
+    )
+
     country = get_user_country_code(user)
+
+    merchant = clean_text(merchant_name)
+    link = clean_text(product_url)
+
     return (
         f"Bonjour {brand},\n\n"
-        f"Je souhaite faire valider mon panier.\n"
-        f"Client : {client_name}\n"
-        f"Pays : {country}\n"
-        f"Marchand : {clean_text(merchant_name)}\n"
-        f"Lien : {clean_text(product_url)}\n\n"
-        f"Merci de vérifier puis de me confirmer avant paiement."
+        f"Je souhaite faire valider mon panier avant paiement.\n\n"
+        f"👤 Client : {client_name}\n"
+        f"📞 Téléphone : {client_phone}\n"
+        f"🌍 Pays : {country}\n"
+        f"🏪 Marchand : {merchant}\n"
+        f"🔗 Lien panier / produit : {link}\n\n"
+        f"Merci de vérifier la disponibilité, le prix et la validité du lien "
+        f"puis de me confirmer avant paiement."
     )
 
 
@@ -1123,20 +1189,37 @@ def build_upgrade_message(user: dict | None, target_plan: str, months: int | Non
 
 def build_payment_proof_message(order: dict | None, user: dict | None) -> str:
     brand = get_brand_name()
-    client_name = clean_text((user or {}).get("name") or st.session_state.get("client_name", "Client"))
-    client_phone = clean_text((user or {}).get("phone") or st.session_state.get("client_phone", ""))
-    order_code = clean_text((order or {}).get("order_code", st.session_state.get("last_order_code", "")))
-    total_xaf = format_xaf((order or {}).get("total_xaf", 0))
-    return (
-        f"Bonjour {brand},\n\n"
-        f"J'envoie ma preuve de paiement.\n"
-        f"Client : {client_name}\n"
-        f"Téléphone : {client_phone}\n"
-        f"Commande : {order_code}\n"
-        f"Montant : {total_xaf} XAF\n\n"
-        f"Je joins la capture de paiement pour validation."
+
+    client_name = clean_text(
+        (user or {}).get("name")
+        or st.session_state.get("client_name", "Client")
     )
 
+    client_phone = clean_text(
+        (user or {}).get("phone")
+        or st.session_state.get("client_phone", "")
+    )
+
+    order_code = clean_text(
+        (order or {}).get("order_code")
+        or st.session_state.get("last_order_code", "")
+    )
+
+    total_xaf = format_xaf((order or {}).get("total_xaf", 0))
+    site_name = clean_text((order or {}).get("site_name", ""))
+    payment_method = clean_text((order or {}).get("payment_method", ""))
+
+    return (
+        f"Bonjour {brand},\n\n"
+        f"J’envoie ma preuve de paiement pour validation finale.\n\n"
+        f"👤 Client : {client_name}\n"
+        f"📞 Téléphone : {client_phone}\n"
+        f"🧾 Commande : {order_code}\n"
+        f"🏪 Marchand : {site_name}\n"
+        f"💰 Montant : {total_xaf} XAF\n"
+        f"📲 Moyen de paiement : {payment_method or 'À confirmer'}\n\n"
+        f"Je joins la capture de paiement pour vérification et confirmation."
+    )
 
 def _column_exists(table_name: str, column_name: str) -> bool:
     try:
@@ -2572,9 +2655,13 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     merchant_xaf = safe_int(order.get("merchant_total_xaf", 0))
     plan_label = get_sidebar_plan_label(user)
 
+    order_code = clean_text(order.get("order_code", "-"))
+    site_name = clean_text(order.get("site_name", ""))
+    product_url = clean_text(order.get("product_url", ""))
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric(tr("order_code"), clean_text(order.get("order_code", "-")))
+        st.metric(tr("order_code"), order_code)
         st.caption(plan_label)
     with col2:
         st.metric(tr("order_total_xaf"), f"{format_xaf(total_xaf)} XAF")
@@ -2586,30 +2673,60 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     if merchant_xaf > 0:
         st.caption(f"Marchand : {format_dual_amount(merchant_xaf)}")
 
+    st.info(
+        "Étape suivante : envoyez d’abord le lien panier / produit à AfriPay, "
+        "puis envoyez la preuve de paiement pour validation finale."
+        if get_language() == "fr"
+        else
+        "Next step: first send the cart / product link to AfriPay, "
+        "then send the payment proof for final validation."
+    )
+
     country_code = get_user_country_code(user)
     whatsapp_number = get_best_whatsapp_number(country_code)
+
     if not whatsapp_number:
         st.warning(tr("proof_unavailable_text"))
         return
 
     cart_message = build_cart_validation_message(
         user,
-        order.get("site_name", ""),
-        order.get("product_url", ""),
+        site_name,
+        product_url,
     )
     proof_message = build_payment_proof_message(order, user)
+
     cart_url = build_whatsapp_url(whatsapp_number, cart_message)
     proof_url = build_whatsapp_url(whatsapp_number, proof_message)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if cart_url:
-            st.link_button(tr("send_cart_whatsapp"), cart_url, width=UI_WIDTH_STRETCH)
-    with col2:
-        if proof_url:
-            st.link_button(tr("send_payment_proof"), proof_url, width=UI_WIDTH_STRETCH)
+    btn_col1, btn_col2 = st.columns(2)
 
-    st.caption(tr("proof_intro"))
+    with btn_col1:
+        if cart_url:
+            st.link_button(
+                tr("send_cart_whatsapp"),
+                cart_url,
+                width=UI_WIDTH_STRETCH,
+            )
+
+    with btn_col2:
+        if proof_url:
+            st.link_button(
+                tr("send_payment_proof"),
+                proof_url,
+                width=UI_WIDTH_STRETCH,
+            )
+
+    st.caption(
+        tr("proof_intro")
+        if tr("proof_intro") != "proof_intro"
+        else (
+            "Les validations finales de commande et de paiement sont traitées via le support WhatsApp AfriPay."
+            if get_language() == "fr"
+            else
+            "Final order and payment validations are handled through AfriPay WhatsApp support."
+        )
+    )
 
 def render_orders_table(user: dict | None) -> None:
     st.markdown(f"### {tr('recent_orders')}")
