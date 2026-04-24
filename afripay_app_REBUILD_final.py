@@ -734,13 +734,9 @@ def get_best_whatsapp_number(country_code: str) -> str:
     return ""
 
 def has_any_whatsapp_configured(country_code: str | None = None) -> bool:
-    cc = normalize_country_code(
-        country_code or get_default_country()
-    )
-
-    whatsapp_number = get_best_whatsapp_number(cc)
-
-    return bool(whatsapp_number)
+    # Règle Manifeste AfriPay :
+    # disponibilité WhatsApp = numéro central +31 uniquement
+    return bool(get_support_whatsapp_number())
 
 
 def get_brand_name() -> str:
@@ -2537,8 +2533,11 @@ def render_upgrade_unavailable_notice() -> None:
 
 def render_upgrade_section(user: dict | None) -> None:
     st.markdown(f"### {tr('upgrade_title')}")
-    country_code = get_user_country_code(user)
-    whatsapp_number = get_best_whatsapp_number(country_code)
+
+    # Règle métier AfriPay :
+    # upgrade FREE / PREMIUM / PREMIUM_PLUS = validation centrale NL uniquement.
+    whatsapp_number = get_support_whatsapp_number()
+
     if not whatsapp_number:
         render_upgrade_unavailable_notice()
         return
@@ -2549,20 +2548,48 @@ def render_upgrade_section(user: dict | None) -> None:
     with col1:
         st.markdown(f"#### {tr('plan_premium')}")
         st.write(tr("plan_premium_desc"))
+
         premium_message = build_upgrade_message(user, PLAN_PREMIUM)
         premium_url = build_whatsapp_url(whatsapp_number, premium_message)
+
         if premium_url:
-            st.link_button(tr("premium_btn"), premium_url, width=UI_WIDTH_STRETCH)
+            st.link_button(
+                tr("premium_btn"),
+                premium_url,
+                width=UI_WIDTH_STRETCH,
+            )
 
     with col2:
         st.markdown(f"#### {tr('plan_premium_plus')}")
-        duration = st.radio(tr("duration_label"), options=PLAN_DURATION_OPTIONS, index=0, horizontal=True, help=tr("duration_help"), key="premium_plus_duration")
+
+        duration = st.radio(
+            tr("duration_label"),
+            options=PLAN_DURATION_OPTIONS,
+            index=0,
+            horizontal=True,
+            help=tr("duration_help"),
+            key="premium_plus_duration",
+        )
+
         st.write(f"**{get_premium_plus_price(duration)}**")
         st.write(tr("plan_premium_plus_desc"))
-        premium_plus_message = build_upgrade_message(user, PLAN_PREMIUM_PLUS, duration)
-        premium_plus_url = build_whatsapp_url(whatsapp_number, premium_plus_message)
+
+        premium_plus_message = build_upgrade_message(
+            user,
+            PLAN_PREMIUM_PLUS,
+            duration,
+        )
+        premium_plus_url = build_whatsapp_url(
+            whatsapp_number,
+            premium_plus_message,
+        )
+
         if premium_plus_url:
-            st.link_button(tr("premium_plus_btn"), premium_plus_url, width=UI_WIDTH_STRETCH)
+            st.link_button(
+                tr("premium_plus_btn"),
+                premium_plus_url,
+                width=UI_WIDTH_STRETCH,
+            )
 
     st.caption(tr("payment_flow_text"))
 
@@ -2911,8 +2938,9 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
         "then send the payment proof for final validation."
     )
 
-    country_code = get_user_country_code(user)
-    whatsapp_number = get_best_whatsapp_number(country_code)
+    # Règle métier AfriPay :
+    # lien panier + preuve paiement = support central NL uniquement.
+    whatsapp_number = get_support_whatsapp_number()
 
     if not whatsapp_number:
         st.warning(tr("proof_unavailable_text"))
