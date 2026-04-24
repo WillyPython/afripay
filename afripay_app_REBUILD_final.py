@@ -545,6 +545,16 @@ def inject_css() -> None:
 def clean_text(value) -> str:
     return "" if value is None else str(value).strip()
 
+def ui_info(msg: str) -> None:
+    st.info(msg)
+
+
+def ui_success(msg: str) -> None:
+    st.success(msg)
+
+
+def ui_error(msg: str) -> None:
+    st.error(msg)
 
 def tr(key: str) -> str:
     lang = get_language()
@@ -2903,7 +2913,7 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     if not order:
         return
 
-    st.success(tr("order_created"))
+    ui_success(tr("order_created"))
     st.markdown(f"#### {tr('order_summary')}")
 
     total_xaf = safe_int(order.get("total_xaf", 0))
@@ -2929,17 +2939,24 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     if merchant_xaf > 0:
         st.caption(f"Marchand : {format_dual_amount(merchant_xaf)}")
 
-    st.info(
-        "Étape suivante : envoyez d’abord le lien panier / produit à AfriPay, "
-        "puis envoyez la preuve de paiement pour validation finale."
+    ui_info(
+        (
+            "📦 Étapes de validation :\n\n"
+            "1️⃣ Commande créée ✅\n"
+            "2️⃣ Envoyer le lien panier ⏳\n"
+            "3️⃣ Envoyer la preuve de paiement ⏳\n"
+            "4️⃣ Validation AfriPay 🔒"
+        )
         if get_language() == "fr"
-        else
-        "Next step: first send the cart / product link to AfriPay, "
-        "then send the payment proof for final validation."
+        else (
+            "📦 Validation steps:\n\n"
+            "1️⃣ Order created ✅\n"
+            "2️⃣ Send cart link ⏳\n"
+            "3️⃣ Send payment proof ⏳\n"
+            "4️⃣ AfriPay validation 🔒"
+        )
     )
 
-    # Règle métier AfriPay :
-    # lien panier + preuve paiement = support central NL uniquement.
     whatsapp_number = get_support_whatsapp_number()
 
     if not whatsapp_number:
@@ -2961,7 +2978,9 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     with btn_col1:
         if cart_url:
             st.link_button(
-                tr("send_cart_whatsapp"),
+                "📲 Envoyer le panier sur WhatsApp"
+                if get_language() == "fr"
+                else "📲 Send cart on WhatsApp",
                 cart_url,
                 width=UI_WIDTH_STRETCH,
             )
@@ -2969,7 +2988,9 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
     with btn_col2:
         if proof_url:
             st.link_button(
-                tr("send_payment_proof"),
+                "📲 Envoyer la preuve de paiement"
+                if get_language() == "fr"
+                else "📲 Send payment proof",
                 proof_url,
                 width=UI_WIDTH_STRETCH,
             )
