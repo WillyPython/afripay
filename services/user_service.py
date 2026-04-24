@@ -510,7 +510,8 @@ def activate_premium_plus(user_id: int, duration: str, start_date=None) -> None:
                 subscription_paid = TRUE,
                 subscription_payment_status = %s,
                 subscription_start_date = %s,
-                subscription_end_date = %s
+                subscription_end_date = %s,
+                premium_plus_active = TRUE
             WHERE id = %s
             """,
             (
@@ -554,7 +555,8 @@ def expire_premium_plus_if_needed(user_id: int) -> bool:
             SET
                 plan = %s,
                 subscription_paid = FALSE,
-                subscription_payment_status = %s
+                subscription_payment_status = %s,
+                premium_plus_active = FALSE
             WHERE id = %s
             """,
             (

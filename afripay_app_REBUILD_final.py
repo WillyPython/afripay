@@ -1039,47 +1039,54 @@ def get_base_user_plan(user: dict | None) -> str:
 def _truthy(value) -> bool:
     if isinstance(value, bool):
         return value
-    return clean_text(value).lower() in {"1", "true", "yes", "oui", "active", "confirmed", "paid"}
+    return clean_text(value).lower() in {"1", "true", "t", "yes", "oui", "active", "confirmed", "paid"}
 
 
 def is_premium_plus_active(user: dict | None) -> bool:
     if not user:
         return False
-    explicit_flags = [
-        user.get("premium_plus_active"),
-        user.get("is_premium_plus_active"),
-        user.get("subscription_active"),
-    ]
-    if any(_truthy(v) for v in explicit_flags):
-        return True
 
-    status_candidates = [
-        clean_text(user.get("premium_plus_status")).upper(),
-        clean_text(user.get("subscription_status")).upper(),
-        clean_text(user.get("premium_status")).upper(),
-    ]
-    if any(v in {"ACTIVE", "CONFIRMED", "PAID"} for v in status_candidates if v):
-        return True
+    if not _truthy(user.get("premium_plus_active")):
+        return False
 
-    end_date = clean_text(user.get("subscription_end_date") or user.get("premium_plus_end_date") or "")
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            reference_now = datetime.now(end_dt.tzinfo or UTC)
-            return end_dt >= reference_now
-        except Exception:
-            pass
-    return False
+    end_date = user.get("subscription_end_date") or user.get("premium_plus_end_date")
 
+    if not end_date:
+        return False
+
+    try:
+        if isinstance(end_date, datetime):
+            end_dt = end_date
+        else:
+            end_dt = datetime.fromisoformat(clean_text(end_date).replace("Z", "+00:00"))
+
+        if end_dt.tzinfo is None:
+            reference_now = datetime.now()
+        else:
+            reference_now = datetime.now(end_dt.tzinfo)
+
+        return end_dt >= reference_now
+    except Exception:
+        return False
 
 def is_premium_plus_pending(user: dict | None) -> bool:
-    return bool(user) and get_base_user_plan(user) == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user)
+    if not user:
+        return False
 
+    return (
+        get_base_user_plan(user) == PLAN_PREMIUM_PLUS
+        and not is_premium_plus_active(user)
+    )
 
 def get_effective_user_plan(user: dict | None) -> str:
+    if not user:
+        return PLAN_FREE
+
     if is_premium_plus_active(user):
         return PLAN_PREMIUM_PLUS
+
     return get_base_user_plan(user)
+
 
 
 def get_sidebar_plan_label(user: dict | None) -> str:
@@ -1690,7 +1697,10 @@ def render_sidebar(user: dict | None) -> None:
     render_language_and_country_controls()
 
     if is_admin:
-        st.sidebar.markdown('<div class="admin-nav-title">🛠️ Administration</div>', unsafe_allow_html=True)
+        st.sidebar.markdown(
+            '<div class="admin-nav-title">🛠️ Administration</div>',
+            unsafe_allow_html=True,
+        )
 
         if st.sidebar.button("📊 Dashboard global", width=UI_WIDTH_STRETCH):
             st.session_state["admin_view"] = ADMIN_VIEW_DASHBOARD
@@ -1719,6 +1729,7 @@ def render_sidebar(user: dict | None) -> None:
         if st.sidebar.button("💸 Remboursements", width=UI_WIDTH_STRETCH):
             st.session_state["admin_view"] = ADMIN_VIEW_REFUNDS
             st.session_state["admin_filter"] = "ALL"
+
         if st.sidebar.button("👑 PREMIUM_PLUS", width=UI_WIDTH_STRETCH):
             st.session_state["admin_view"] = ADMIN_VIEW_PREMIUM_PLUS
             st.session_state["admin_filter"] = "ALL"
@@ -1759,7 +1770,6 @@ def render_sidebar(user: dict | None) -> None:
 
     sidebar_plan_display = effective_plan
 
-    # Si l'utilisateur a choisi une option de travail, on l'affiche clairement
     if selected_plan_option == PLAN_PREMIUM:
         sidebar_plan_display = PLAN_PREMIUM
     elif selected_plan_option == PLAN_PREMIUM_PLUS:
@@ -1767,8 +1777,15 @@ def render_sidebar(user: dict | None) -> None:
     elif free_exhausted and selected_plan_option in {PLAN_PREMIUM, PLAN_PREMIUM_PLUS}:
         sidebar_plan_display = selected_plan_option
 
+    if premium_plus_pending:
+        sidebar_plan_display = PLAN_PREMIUM_PLUS
+
     plan_key = f"plan_{sidebar_plan_display.lower()}"
-    plan_label = tr(plan_key) if plan_key in TRANSLATIONS[get_language()] else sidebar_plan_display
+    plan_label = (
+        tr(plan_key)
+        if plan_key in TRANSLATIONS[get_language()]
+        else sidebar_plan_display
+    )
     free_left_display = free_left if sidebar_plan_display == PLAN_FREE else "∞"
 
     st.sidebar.markdown(
@@ -1782,10 +1799,21 @@ def render_sidebar(user: dict | None) -> None:
         unsafe_allow_html=True,
     )
 
-    # ==========================================
-    # Bloc PREMIUM standard sélectionné
-    # ==========================================
     if selected_plan_option == PLAN_PREMIUM:
+        st.sidebar.markdown(
+            """
+            <div class="af-card">
+                <div style="font-size:1rem;font-weight:800;margin-bottom:8px;">
+                    💼 PREMIUM
+                </div>
+                <div class="af-small" style="line-height:1.6;">
+                    20% de frais AfriPay par commande.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         status_title = "Statut" if get_language() == "fr" else "Status"
         status_text = (
             "Compte prêt pour une commande PREMIUM."
@@ -1804,44 +1832,70 @@ def render_sidebar(user: dict | None) -> None:
             unsafe_allow_html=True,
         )
 
-    # ==========================================
-    # Bloc PREMIUM_PLUS sélectionné / en attente
-    # ==========================================
-    elif selected_plan_option == PLAN_PREMIUM_PLUS or premium_plus_pending:
+    elif selected_plan_option == PLAN_PREMIUM_PLUS or base_plan == PLAN_PREMIUM_PLUS:
         subscription_price_eur = 30 if selected_duration == 6 else 60
         subscription_price_xaf = estimate_merchant_total_xaf(subscription_price_eur)
 
-        option_title = "Option choisie" if get_language() == "fr" else "Selected option"
-        duration_label = "Durée" if get_language() == "fr" else "Duration"
-        status_label = "Statut" if get_language() == "fr" else "Status"
-        amount_label = "Montant abonnement" if get_language() == "fr" else "Subscription amount"
+        if premium_plus_active:
+            start_date = format_date_display(user.get("subscription_start_date")) if user else "-"
+            end_date = format_date_display(user.get("subscription_end_date")) if user else "-"
 
-        status_text = (
-            "Actif"
-            if premium_plus_active
-            else "En attente d’activation"
-            if get_language() == "fr"
-            else "Pending activation"
-        )
-        if premium_plus_active and get_language() != "fr":
-            status_text = "Active"
+            st.sidebar.markdown(
+                f"""
+                <div class="af-card">
+                    <div style="font-size:1rem;font-weight:800;margin-bottom:8px;">
+                        👑 PREMIUM_PLUS actif
+                    </div>
+                    <div class="af-small" style="line-height:1.6;">
+                        Début : {start_date}<br>
+                        Fin : {end_date}<br>
+                        Frais AfriPay : 0% pendant la période active
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            option_title = "Option choisie" if get_language() == "fr" else "Selected option"
+            duration_label = "Durée" if get_language() == "fr" else "Duration"
+            status_label = "Statut" if get_language() == "fr" else "Status"
+            amount_label = "Montant abonnement" if get_language() == "fr" else "Subscription amount"
 
-        st.sidebar.markdown(
-            f"""
-            <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
-                <div style="font-size:1.05rem;font-weight:800;">{option_title}</div>
-                <div style="font-size:1.1rem;font-weight:800;margin-top:8px;">PREMIUM_PLUS</div>
-                <div class="af-small" style="margin-top:8px;">{duration_label} : {selected_duration} mois</div>
-                <div class="af-small" style="margin-top:6px;">{status_label} : {status_text}</div>
-                <div class="af-small" style="margin-top:6px;">{amount_label} : {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            status_text = (
+                "En attente d’activation"
+                if get_language() == "fr"
+                else "Pending activation"
+            )
 
-    # ==========================================
-    # Bloc FREE épuisé sans option sélectionnée
-    # ==========================================
+            st.sidebar.markdown(
+                f"""
+                <div class="af-card" style="background:rgba(26,188,156,0.16); border:1px solid rgba(26,188,156,0.45);">
+                    <div style="font-size:1.05rem;font-weight:800;">{option_title}</div>
+                    <div style="font-size:1.1rem;font-weight:800;margin-top:8px;">PREMIUM_PLUS</div>
+                    <div class="af-small" style="margin-top:8px;">{duration_label} : {selected_duration} mois</div>
+                    <div class="af-small" style="margin-top:6px;">{status_label} : {status_text}</div>
+                    <div class="af-small" style="margin-top:6px;">{amount_label} : {subscription_price_eur} EUR ≈ {format_xaf(subscription_price_xaf)} XAF</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    elif sidebar_plan_display == PLAN_FREE:
+        if free_exhausted:
+            st.sidebar.warning(
+                "Quota FREE épuisé."
+                if get_language() == "fr"
+                else "FREE quota exhausted."
+            )
+        else:
+            st.sidebar.info(
+                (
+                    f"Il vous reste {free_left} commande(s) FREE."
+                    if get_language() == "fr"
+                    else f"You have {free_left} FREE order(s) left."
+                )
+            )
+
     elif free_exhausted:
         status_title = "Upgrade" if get_language() == "fr" else "Upgrade"
         status_text = (
@@ -2309,10 +2363,9 @@ def render_plan_cards(user: dict | None) -> None:
             f"Statut : en attente d’activation"
         )
 
-        st.warning(
-            "Pour activer PREMIUM_PLUS : effectuez d’abord le paiement de l’abonnement, "
-            "envoyez ensuite la preuve de paiement, puis attendez la validation admin. "
-            "La création de commande reste bloquée tant que l’abonnement n’est pas activé."
+        st.success(
+            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+            "Votre abonnement sera activé après validation administrative."
         )
 
         st.markdown(
@@ -2351,9 +2404,9 @@ def render_plan_cards(user: dict | None) -> None:
         proof_whatsapp_url = _build_whatsapp_link(proof_message)
 
         if not central_whatsapp_number:
-            st.error(
-                "Le numéro WhatsApp central AfriPay n’est pas encore configuré dans les paramètres. "
-                "Merci de le définir dans settings avant d’utiliser le flow PREMIUM_PLUS."
+            st.success(
+                "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+                "Votre abonnement sera activé après validation administrative."
             )
         else:
             st.markdown(
@@ -2400,16 +2453,39 @@ def render_plan_cards(user: dict | None) -> None:
 def render_kpis(user: dict | None) -> None:
     plan_label = get_sidebar_plan_label(user)
     left = get_free_orders_remaining(user)
+
+    default_subscription_text = (
+        "Aucun abonnement actif"
+        if get_language() == "fr"
+        else "No active subscription"
+    )
+
     sub_status = clean_text(
         (user or {}).get("subscription_status")
         or (user or {}).get("premium_plus_status")
-        or "-"
+        or ""
     )
     sub_end_date = clean_text(
         (user or {}).get("subscription_end_date")
         or (user or {}).get("premium_plus_end_date")
         or ""
     )
+
+    base_plan = get_base_user_plan(user)
+
+    if user and base_plan == PLAN_PREMIUM_PLUS:
+        if sub_end_date:
+            detail = format_date_display(sub_end_date)
+        elif sub_status:
+            detail = sub_status
+        else:
+            detail = (
+                "En attente de validation"
+                if get_language() == "fr"
+                else "Pending validation"
+            )
+    else:
+        detail = default_subscription_text
 
     col1, col2, col3 = st.columns(3)
 
@@ -2437,7 +2513,6 @@ def render_kpis(user: dict | None) -> None:
         )
 
     with col3:
-        detail = format_date_display(sub_end_date) if sub_end_date else (sub_status or "-")
         st.markdown(
             f'''
             <div class="af-kpi">
@@ -2447,7 +2522,6 @@ def render_kpis(user: dict | None) -> None:
             ''',
             unsafe_allow_html=True,
         )
-
 
 def render_upgrade_unavailable_notice() -> None:
     st.markdown(
@@ -2499,6 +2573,7 @@ def render_order_form(user: dict | None) -> None:
         st.info(tr("account_intro"))
         return
 
+    user_id = int(user["id"])
     user_country = get_user_country_code(user)
     upgrade_available = has_any_whatsapp_configured(user_country)
 
@@ -2575,20 +2650,16 @@ def render_order_form(user: dict | None) -> None:
         )
 
     # =====================================================
-    # Cas PREMIUM_PLUS : formulaire bloqué tant que non activé
+    # Cas PREMIUM_PLUS choisi mais non encore validé/admin activé
     # =====================================================
     if selected_plan_option == PLAN_PREMIUM_PLUS and not premium_plus_active:
-        st.warning(
-            "Votre formule PREMIUM_PLUS est en attente d’activation. "
-            "Effectuez d’abord le paiement de l’abonnement, envoyez la preuve de paiement, "
-            "puis attendez la validation admin. "
-            "Le formulaire de commande sera activé après confirmation du paiement."
+        st.success(
+            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+            "Votre abonnement sera activé après validation administrative."
             if get_language() == "fr"
             else
-            "Your PREMIUM_PLUS plan is pending activation. "
-            "Please complete the subscription payment first, send proof of payment, "
-            "then wait for admin validation. "
-            "The order form will be activated after payment confirmation."
+            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+            "Your subscription will be activated after admin validation."
         )
         st.session_state["premium_page_open"] = True
         return
@@ -2597,13 +2668,13 @@ def render_order_form(user: dict | None) -> None:
     # Cas PREMIUM_PLUS déjà stocké en base mais pas encore actif
     # =====================================================
     if premium_plus_pending:
-        st.warning(
-            "Votre formule PREMIUM_PLUS est en attente de validation. "
-            "Vous pourrez créer votre commande après confirmation du paiement et validation admin."
+        st.success(
+            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+            "Votre abonnement sera activé après validation administrative."
             if get_language() == "fr"
             else
-            "Your PREMIUM_PLUS plan is pending validation. "
-            "You will be able to create your order after payment confirmation and admin validation."
+            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+            "Your subscription will be activated after admin validation."
         )
         st.session_state["premium_page_open"] = True
         return
@@ -2730,6 +2801,19 @@ def render_order_form(user: dict | None) -> None:
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
     working_plan = selected_plan_option or effective_plan or base_plan
 
+    # Blocage de sécurité backend/UI pour PREMIUM_PLUS non activé
+    if working_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user):
+        st.success(
+            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+            "Votre abonnement sera activé après validation administrative."
+            if get_language() == "fr"
+            else
+            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+            "Your subscription will be activated after admin validation."
+        )
+        st.session_state["premium_page_open"] = True
+        return
+
     # Les règles FREE ne s'appliquent que si la commande est réellement créée en FREE
     if working_plan == PLAN_FREE:
         free_error = validate_free_order_rules(user, estimated_xaf)
@@ -2753,8 +2837,8 @@ def render_order_form(user: dict | None) -> None:
 
     # Synchroniser le plan réel en base avant création
     if working_plan == PLAN_PREMIUM and base_plan != PLAN_PREMIUM:
-        set_user_plan(int(user["id"]), PLAN_PREMIUM)
-        user = get_user_by_id(int(user["id"])) or user
+        set_user_plan(user_id, PLAN_PREMIUM)
+        user = get_user_by_id(user_id) or user
         base_plan = get_base_user_plan(user)
         effective_plan = get_effective_user_plan(user)
 
@@ -2762,7 +2846,7 @@ def render_order_form(user: dict | None) -> None:
 
     try:
         created_result = create_order_for_user(
-            user_id=int(user["id"]),
+            user_id=user_id,
             client_name=clean_text(user.get("name") or st.session_state.get("client_name", "")),
             client_phone=clean_text(user.get("phone") or st.session_state.get("client_phone", "")),
             client_email=clean_text(user.get("email") or st.session_state.get("client_email", "")),
@@ -2787,8 +2871,6 @@ def render_order_form(user: dict | None) -> None:
         (order or {}).get("order_code") or created_result
     )
     render_order_success(user, order or {"order_code": clean_text(created_result)})
-
-
 
 def render_order_success(user: dict | None, order: dict | None) -> None:
     if not order:
@@ -3276,6 +3358,7 @@ def render_admin_premium_plus() -> None:
                 subscription_payment_status,
                 subscription_start_date,
                 subscription_end_date,
+                premium_plus_active,
                 created_at
             FROM users
             WHERE UPPER(COALESCE(plan, '')) = 'PREMIUM_PLUS'
@@ -3294,12 +3377,15 @@ def render_admin_premium_plus() -> None:
     pending_count = 0
 
     for user in premium_rows:
+        user_id = int(user["id"])
         try:
-            if is_premium_plus_active(int(user["id"])):
-                active_count += 1
-            else:
-                pending_count += 1
+            active = is_premium_plus_active(user)
         except Exception:
+            active = False
+
+        if active:
+            active_count += 1
+        else:
             pending_count += 1
 
     col1, col2, col3 = st.columns(3)
@@ -3316,16 +3402,19 @@ def render_admin_premium_plus() -> None:
         client_phone = clean_text(user.get("phone") or "-")
         client_email = clean_text(user.get("email") or "-")
 
-        raw_duration = clean_text(user.get("subscription_duration") or "")
+        raw_duration = clean_text(user.get("subscription_duration") or "").upper().strip()
         if raw_duration == "6M":
             duration_label = "6 mois"
             activation_duration = "6M"
+            amount_eur = 30
         elif raw_duration == "12M":
             duration_label = "12 mois"
             activation_duration = "12M"
+            amount_eur = 60
         else:
-            duration_label = raw_duration or "-"
+            duration_label = "6 mois"
             activation_duration = "6M"
+            amount_eur = 30
 
         payment_status = clean_text(
             user.get("subscription_payment_status") or "PENDING"
@@ -3335,13 +3424,11 @@ def render_admin_premium_plus() -> None:
         end_date = format_date_display(user.get("subscription_end_date"))
 
         try:
-            active = is_premium_plus_active(user_id)
+            active = is_premium_plus_active(user)
         except Exception:
             active = False
 
         status_badge = "ACTIF" if active else "EN ATTENTE"
-
-        amount_eur = 30 if activation_duration == "6M" else 60
         amount_xaf = estimate_merchant_total_xaf(amount_eur)
 
         st.markdown(
@@ -3365,37 +3452,40 @@ def render_admin_premium_plus() -> None:
             unsafe_allow_html=True,
         )
 
-        if not active:
-            col_a, col_b = st.columns(2)
+        if active:
+            st.success(f"PREMIUM_PLUS actif jusqu’au {end_date}.")
+            continue
 
-            with col_a:
-                if st.button(
-                    f"✅ Activer PREMIUM_PLUS #{user_id}",
-                    key=f"activate_pp_{user_id}",
-                    width=UI_WIDTH_STRETCH,
-                ):
-                    try:
-                        activate_premium_plus(
-                            user_id=user_id,
-                            duration=activation_duration,
-                        )
-                        st.success(f"PREMIUM_PLUS activé pour {client_name}.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(str(exc))
+        col_a, col_b = st.columns(2)
 
-            with col_b:
-                if st.button(
-                    f"❌ Rejeter / retour PREMIUM #{user_id}",
-                    key=f"reject_pp_{user_id}",
-                    width=UI_WIDTH_STRETCH,
-                ):
-                    try:
-                        set_user_plan(user_id, PLAN_PREMIUM)
-                        st.warning(f"Retour en PREMIUM pour {client_name}.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(str(exc))
+        with col_a:
+            if st.button(
+                f"✅ Valider PREMIUM_PLUS #{user_id}",
+                key=f"activate_pp_{user_id}",
+                width=UI_WIDTH_STRETCH,
+            ):
+                try:
+                    activate_premium_plus(
+                        user_id=user_id,
+                        duration=activation_duration,
+                    )
+                    st.success(f"PREMIUM_PLUS activé pour {client_name}.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Activation impossible : {exc}")
+
+        with col_b:
+            if st.button(
+                f"❌ Rejeter / retour PREMIUM #{user_id}",
+                key=f"reject_pp_{user_id}",
+                width=UI_WIDTH_STRETCH,
+            ):
+                try:
+                    set_user_plan(user_id, PLAN_PREMIUM)
+                    st.warning(f"Retour en PREMIUM pour {client_name}.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Retour PREMIUM impossible : {exc}")
 
 def render_admin_current_view() -> None:
     view = clean_text(st.session_state.get("admin_view", ADMIN_VIEW_DASHBOARD)).lower()
@@ -3508,11 +3598,12 @@ def main() -> None:
     show_upgrade = bool(st.session_state.get("premium_page_open", False))
     upgrade_available = has_any_whatsapp_configured(get_user_country_code(user))
 
-    premium_plus_pending = bool(
-        user
-        and get_base_user_plan(user) == PLAN_PREMIUM_PLUS
-        and not is_premium_plus_active(user)
-    )
+    premium_plus_pending = False
+    if user and get_base_user_plan(user) == PLAN_PREMIUM_PLUS:
+        try:
+            premium_plus_pending = not is_premium_plus_active(user)
+        except Exception:
+            premium_plus_pending = True
 
     if user and get_base_user_plan(user) == PLAN_FREE and get_free_orders_remaining(user) <= 0:
         if upgrade_available:
