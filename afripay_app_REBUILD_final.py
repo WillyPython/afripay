@@ -1143,7 +1143,6 @@ def estimate_merchant_total_xaf(merchant_total_eur: float) -> int:
         rate_value = 655.957
     return _round_xaf(float(merchant_total_eur or 0) * rate_value)
 
-
 def build_cart_validation_message(
     user: dict | None,
     merchant_name: str,
@@ -1174,10 +1173,9 @@ def build_cart_validation_message(
         f"🌍 Pays : {country}\n"
         f"🏪 Marchand : {merchant}\n"
         f"🔗 Lien panier / produit : {link}\n\n"
-        f"Merci de vérifier la disponibilité, le prix et la validité du lien "
-        f"puis de me confirmer avant paiement."
+        f"Merci de vérifier la disponibilité, le prix, les frais éventuels "
+        f"et la validité du lien, puis de me confirmer le montant final avant paiement."
     )
-
 
 def build_upgrade_message(user: dict | None, target_plan: str, months: int | None = None) -> str:
     brand = get_brand_name()
@@ -2796,7 +2794,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     if not clean_text(site_name):
-        st.error(
+        ui_info(
             "Le nom du site / marchand est obligatoire."
             if get_language() == "fr"
             else "Merchant / site name is required."
@@ -2804,7 +2802,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     if not clean_text(product_title):
-        st.error(
+        ui_info(
             "Le titre du produit / service est obligatoire."
             if get_language() == "fr"
             else "Product / service title is required."
@@ -2812,7 +2810,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     if float(merchant_total_eur or 0) <= 0:
-        st.error(
+        ui_info(
             "Le montant EUR doit être supérieur à zéro."
             if get_language() == "fr"
             else "EUR amount must be greater than zero."
@@ -2820,7 +2818,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     if not clean_text(forwarder_name):
-        st.error(
+        ui_info(
             "Le nom du transitaire / agent / agence est obligatoire pour créer une commande."
             if get_language() == "fr"
             else "The freight forwarder / agent / agency name is required."
@@ -2828,7 +2826,7 @@ def render_order_form(user: dict | None) -> None:
         return
 
     if not clean_text(delivery_address):
-        st.error(
+        ui_info(
             "L'adresse du transitaire / agence de réception est obligatoire pour créer une commande."
             if get_language() == "fr"
             else "The freight forwarder / delivery address is required."
