@@ -3389,17 +3389,13 @@ def render_admin_refunds() -> None:
         render_admin_order_card(row)
 
 def render_admin_premium_plus() -> None:
-    st.markdown("## 👑 PREMIUM_PLUS")
+    st.markdown("## PREMIUM_PLUS")
 
     with get_cursor() as cur:
         cur.execute(
             """
             SELECT
-                id,
-                name,
-                phone,
-                email,
-                plan,
+                id, name, phone, email, plan,
                 subscription_duration,
                 subscription_paid,
                 subscription_payment_status,
@@ -3424,7 +3420,6 @@ def render_admin_premium_plus() -> None:
     pending_count = 0
 
     for user in premium_rows:
-        user_id = int(user["id"])
         try:
             active = is_premium_plus_active(user)
         except Exception:
@@ -3450,11 +3445,8 @@ def render_admin_premium_plus() -> None:
         client_email = clean_text(user.get("email") or "-")
 
         raw_duration = clean_text(user.get("subscription_duration") or "").upper().strip()
-        if raw_duration == "6M":
-            duration_label = "6 mois"
-            activation_duration = "6M"
-            amount_eur = 30
-        elif raw_duration == "12M":
+
+        if raw_duration == "12M":
             duration_label = "12 mois"
             activation_duration = "12M"
             amount_eur = 60
@@ -3482,17 +3474,17 @@ def render_admin_premium_plus() -> None:
             f"""
             <div class="af-card">
                 <div style="font-size:1.08rem;font-weight:800;margin-bottom:6px;">
-                    👤 {client_name}
+                    Client : {client_name}
                 </div>
                 <div class="af-small" style="line-height:1.7;">
-                    📞 {client_phone}<br>
-                    ✉️ {client_email}<br>
-                    ⏳ Durée : {duration_label}<br>
-                    💳 Paiement : {payment_status}<br>
-                    💰 Abonnement : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF<br>
-                    📅 Début : {start_date}<br>
-                    🏁 Fin : {end_date}<br>
-                    🚀 Statut : {status_badge}
+                    Téléphone : {client_phone}<br>
+                    Email : {client_email}<br>
+                    Durée : {duration_label}<br>
+                    Paiement : {payment_status}<br>
+                    Abonnement : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF<br>
+                    Début : {start_date}<br>
+                    Fin : {end_date}<br>
+                    Statut : {status_badge}
                 </div>
             </div>
             """,
@@ -3507,7 +3499,7 @@ def render_admin_premium_plus() -> None:
 
         with col_a:
             if st.button(
-                f"✅ Valider PREMIUM_PLUS #{user_id}",
+                f"Valider PREMIUM_PLUS #{user_id}",
                 key=f"activate_pp_{user_id}",
                 width=UI_WIDTH_STRETCH,
             ):
@@ -3523,7 +3515,7 @@ def render_admin_premium_plus() -> None:
 
         with col_b:
             if st.button(
-                f"❌ Rejeter / retour PREMIUM #{user_id}",
+                f"Rejeter / retour PREMIUM #{user_id}",
                 key=f"reject_pp_{user_id}",
                 width=UI_WIDTH_STRETCH,
             ):
