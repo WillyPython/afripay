@@ -151,8 +151,7 @@ TRANSLATIONS = {
         "product_url": "Lien produit / lien panier",
         "product_title": "Titre du produit / service",
         "product_specs": "Détails / spécifications",
-        "merchant_total_eur": "Montant total du panier (EUR)",
-        "merchant_total_help": "Entrez le montant total affiché sur le site (produit + livraison).",
+        "merchant_total_eur": "Total livré marchand (EUR)",
         "forwarder_name": "Nom du transitaire / agent / agence",
         "delivery_address": "Adresse transitaire / livraison",
         "payment_method": "Mode de paiement",
@@ -251,8 +250,7 @@ TRANSLATIONS = {
         "product_url": "Product link / cart link",
         "product_title": "Product / service title",
         "product_specs": "Details / specs",
-        "merchant_total_eur": "Total cart amount (EUR)",
-        "merchant_total_help": "Enter the total amount shown on the website (product + shipping).",
+        "merchant_total_eur": "Merchant delivered total (EUR)",
         "forwarder_name": "Freight forwarder / agent / agency",
         "delivery_address": "Freight forwarder / delivery address",
         "payment_method": "Payment method",
@@ -1170,13 +1168,13 @@ def build_cart_validation_message(
     return (
         f"Bonjour {brand},\n\n"
         f"Je souhaite faire valider mon panier avant paiement.\n\n"
-        f"Client : {client_name}\n"
-        f"Telephone : {client_phone}\n"
-        f"Pays : {country}\n"
-        f"Marchand : {merchant}\n"
-        f"Lien panier / produit : {link}\n\n"
-        f"Merci de verifier la disponibilite, le prix, les frais eventuels "
-        f"et la validite du lien, puis de me confirmer le montant final avant paiement."
+        f"👤 Client : {client_name}\n"
+        f"📞 Téléphone : {client_phone}\n"
+        f"🌍 Pays : {country}\n"
+        f"🏪 Marchand : {merchant}\n"
+        f"🔗 Lien panier / produit : {link}\n\n"
+        f"Merci de vérifier la disponibilité, le prix, les frais éventuels "
+        f"et la validité du lien, puis de me confirmer le montant final avant paiement."
     )
 
 def build_upgrade_message(user: dict | None, target_plan: str, months: int | None = None) -> str:
@@ -2631,6 +2629,9 @@ def render_order_form(user: dict | None) -> None:
         base_plan == PLAN_PREMIUM_PLUS and not premium_plus_active
     )
 
+    # =====================================================
+    # Bandeau option choisie
+    # =====================================================
     if selected_plan_option == PLAN_PREMIUM:
         st.markdown(
             """
@@ -2683,6 +2684,9 @@ def render_order_form(user: dict | None) -> None:
             unsafe_allow_html=True,
         )
 
+    # =====================================================
+    # Cas PREMIUM_PLUS choisi mais non encore validé/admin activé
+    # =====================================================
     if selected_plan_option == PLAN_PREMIUM_PLUS and not premium_plus_active:
         st.success(
             "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
@@ -2695,6 +2699,9 @@ def render_order_form(user: dict | None) -> None:
         st.session_state["premium_page_open"] = True
         return
 
+    # =====================================================
+    # Cas PREMIUM_PLUS déjà stocké en base mais pas encore actif
+    # =====================================================
     if premium_plus_pending:
         st.success(
             "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
@@ -2707,6 +2714,9 @@ def render_order_form(user: dict | None) -> None:
         st.session_state["premium_page_open"] = True
         return
 
+    # =====================================================
+    # Cas FREE épuisé
+    # =====================================================
     if base_plan == PLAN_FREE and free_left <= 0:
         if not selected_plan_option:
             if upgrade_available:
@@ -2758,24 +2768,19 @@ def render_order_form(user: dict | None) -> None:
             site_name = st.text_input(tr("site_name"))
             product_url = st.text_input(tr("product_url"))
             product_title = st.text_input(tr("product_title"))
-
             merchant_total_eur = st.number_input(
                 tr("merchant_total_eur"),
                 min_value=0.0,
                 step=1.0,
                 format="%.2f",
             )
-
-            st.caption(tr("merchant_total_help"))
-
-            estimated_xaf_preview = estimate_merchant_total_xaf(merchant_total_eur)
-            st.caption(
-                f"{round(float(merchant_total_eur or 0), 2)} EUR ≈ {format_xaf(estimated_xaf_preview)} XAF"
-            )
-
             payment_method = st.selectbox(
                 tr("payment_method"),
                 options=payment_options.get(get_language(), payment_options["fr"]),
+            )
+            estimated_xaf_preview = estimate_merchant_total_xaf(merchant_total_eur)
+            st.caption(
+                f"{round(float(merchant_total_eur or 0), 2)} EUR ≈ {format_xaf(estimated_xaf_preview)} XAF"
             )
 
         with col2:
@@ -2831,6 +2836,7 @@ def render_order_form(user: dict | None) -> None:
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
     working_plan = selected_plan_option or effective_plan or base_plan
 
+    # Blocage de sécurité backend/UI pour PREMIUM_PLUS non activé
     if working_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user):
         st.success(
             "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
@@ -2843,6 +2849,7 @@ def render_order_form(user: dict | None) -> None:
         st.session_state["premium_page_open"] = True
         return
 
+    # Les règles FREE ne s'appliquent que si la commande est réellement créée en FREE
     if working_plan == PLAN_FREE:
         free_error = validate_free_order_rules(user, estimated_xaf)
 
@@ -2863,9 +2870,12 @@ def render_order_form(user: dict | None) -> None:
             st.error(tr("free_block_amount"))
             return
 
+    # Synchroniser le plan réel en base avant création
     if working_plan == PLAN_PREMIUM and base_plan != PLAN_PREMIUM:
         set_user_plan(user_id, PLAN_PREMIUM)
         user = get_user_by_id(user_id) or user
+        base_plan = get_base_user_plan(user)
+        effective_plan = get_effective_user_plan(user)
 
     momo_provider = momo_provider_mapping.get(clean_text(payment_method), "OTHER")
 
