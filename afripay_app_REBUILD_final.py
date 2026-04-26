@@ -1168,13 +1168,13 @@ def build_cart_validation_message(
     return (
         f"Bonjour {brand},\n\n"
         f"Je souhaite faire valider mon panier avant paiement.\n\n"
-        f"👤 Client : {client_name}\n"
-        f"📞 Téléphone : {client_phone}\n"
-        f"🌍 Pays : {country}\n"
-        f"🏪 Marchand : {merchant}\n"
-        f"🔗 Lien panier / produit : {link}\n\n"
-        f"Merci de vérifier la disponibilité, le prix, les frais éventuels "
-        f"et la validité du lien, puis de me confirmer le montant final avant paiement."
+        f"Client : {client_name}\n"
+        f"Telephone : {client_phone}\n"
+        f"Pays : {country}\n"
+        f"Marchand : {merchant}\n"
+        f"Lien panier / produit : {link}\n\n"
+        f"Merci de verifier la disponibilite, le prix, les frais eventuels "
+        f"et la validite du lien, puis de me confirmer le montant final avant paiement."
     )
 
 def build_upgrade_message(user: dict | None, target_plan: str, months: int | None = None) -> str:
