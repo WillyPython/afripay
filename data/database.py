@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 from contextlib import contextmanager
 
 import psycopg2
@@ -30,9 +33,7 @@ def get_connection():
         get_database_url(),
         cursor_factory=RealDictCursor,
         connect_timeout=5,
-        sslmode="require",
     )
-
 
 def get_conn():
     """

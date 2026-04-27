@@ -411,9 +411,10 @@ def set_user_plan(user_id: int, plan: str) -> None:
     Met à jour le plan utilisateur.
 
     Cas spéciaux :
-    - FREE / PREMIUM : nettoie les champs d'abonnement PREMIUM_PLUS
+    - FREE / PREMIUM : nettoie totalement les champs PREMIUM_PLUS
+      + désactive explicitement premium_plus_active
     - PREMIUM_PLUS : ne doit pas être activé via cette fonction seule
-      pour un vrai business flow. Utiliser activate_premium_plus().
+      → utiliser activate_premium_plus()
     """
     normalized_plan = normalize_plan(plan)
 
@@ -428,7 +429,8 @@ def set_user_plan(user_id: int, plan: str) -> None:
                     subscription_paid = FALSE,
                     subscription_payment_status = NULL,
                     subscription_start_date = NULL,
-                    subscription_end_date = NULL
+                    subscription_end_date = NULL,
+                    premium_plus_active = FALSE
                 WHERE id = %s
                 """,
                 (normalized_plan, int(user_id)),
