@@ -211,7 +211,7 @@ def get_user_by_phone(phone: str):
 def get_user_by_id(user_id: int):
     """
     Récupère un utilisateur par son identifiant.
-    Inclut les champs nécessaires au verrouillage PREMIUM_PLUS.
+    Inclut TOUS les champs nécessaires au pilotage PREMIUM_PLUS.
     """
     if not user_id:
         return None
@@ -226,11 +226,18 @@ def get_user_by_id(user_id: int):
                 email,
                 plan,
                 free_orders_used,
+
+                -- PREMIUM_PLUS
                 subscription_duration,
                 subscription_paid,
                 subscription_payment_status,
+                subscription_status,
+                subscription_active,
                 subscription_start_date,
                 subscription_end_date,
+                premium_plus_active,
+                premium_plus_status,
+
                 created_at
             FROM users
             WHERE id = %s
@@ -241,7 +248,6 @@ def get_user_by_id(user_id: int):
         user = cur.fetchone()
 
     return user
-
 
 # ------------------------------
 # Incrémenter commandes gratuites
@@ -451,8 +457,13 @@ def set_user_plan(user_id: int, plan: str) -> None:
 # ------------------------------
 def mark_premium_plus_payment_pending(user_id: int, duration: str) -> None:
     """
-    Enregistre une demande PREMIUM_PLUS non encore validée.
-    Aucun accès actif n'est donné ici.
+    Enregistre une demande d'abonnement PREMIUM_PLUS non encore validée.
+
+    Règle AfriPay :
+    - le plan actuel reste inchangé : FREE ou PREMIUM
+    - aucun accès PREMIUM_PLUS actif n'est donné ici
+    - la demande apparaît dans l'Admin comme abonnement à valider
+    - l'admin active PREMIUM_PLUS uniquement après preuve de paiement
     """
     normalized_duration = normalize_subscription_duration(duration)
     if normalized_duration is None:
@@ -463,34 +474,39 @@ def mark_premium_plus_payment_pending(user_id: int, duration: str) -> None:
             """
             UPDATE users
             SET
-                plan = %s,
                 subscription_duration = %s,
                 subscription_paid = FALSE,
                 subscription_payment_status = %s,
                 subscription_start_date = NULL,
-                subscription_end_date = NULL
+                subscription_end_date = NULL,
+                subscription_status = %s,
+                subscription_active = FALSE,
+                premium_plus_active = FALSE,
+                premium_plus_status = %s
             WHERE id = %s
             """,
             (
-                PLAN_PREMIUM_PLUS,
                 normalized_duration,
+                "PENDING",
+                "PENDING",
                 "PENDING",
                 int(user_id),
             ),
         )
-
 
 # ------------------------------
 # Activer PREMIUM_PLUS
 # ------------------------------
 def activate_premium_plus(user_id: int, duration: str, start_date=None) -> None:
     """
-    Active réellement PREMIUM_PLUS seulement si :
-    - durée valide : 6M ou 12M
-    - activation backend explicite
-    - dates calculées proprement
+    Active réellement PREMIUM_PLUS après validation admin du paiement.
 
-    Cette fonction représente le vrai moment d'activation après validation du paiement.
+    Règle AfriPay :
+    - le client passe officiellement en PREMIUM_PLUS
+    - le paiement abonnement est marqué payé
+    - l'abonnement devient actif
+    - le statut PREMIUM_PLUS devient ACTIVE
+    - les dates de début/fin sont calculées depuis la validation admin
     """
     normalized_duration = normalize_subscription_duration(duration)
     if normalized_duration is None:
@@ -511,21 +527,25 @@ def activate_premium_plus(user_id: int, duration: str, start_date=None) -> None:
                 subscription_duration = %s,
                 subscription_paid = TRUE,
                 subscription_payment_status = %s,
+                subscription_status = %s,
+                subscription_active = TRUE,
                 subscription_start_date = %s,
                 subscription_end_date = %s,
-                premium_plus_active = TRUE
+                premium_plus_active = TRUE,
+                premium_plus_status = %s
             WHERE id = %s
             """,
             (
                 PLAN_PREMIUM_PLUS,
                 normalized_duration,
                 "PAID",
+                "ACTIVE",
                 effective_start_date,
                 effective_end_date,
+                "ACTIVE",
                 int(user_id),
             ),
         )
-
 
 # ------------------------------
 # Désactiver PREMIUM_PLUS expiré
