@@ -2904,6 +2904,47 @@ def render_order_form(user: dict | None) -> None:
         )
         return
 
+    # ============================================
+    # 📲 VALIDATION LIEN MARCHAND VIA WHATSAPP
+    # ============================================
+
+    support_number = ""
+
+    try:
+        if admin_get_setting:
+            support_number = admin_get_setting("whatsapp_default") or ""
+    except Exception:
+        support_number = ""
+
+    support_number = "".join(ch for ch in str(support_number) if ch.isdigit())
+
+    if support_number:
+        validation_message = f"""Bonjour AfriPay,
+
+    Je souhaite valider cette commande avant paiement :
+
+    🔗 Lien : {clean_text(product_url)}
+    🛒 Produit : {clean_text(product_title)}
+    💰 Montant : {merchant_total_eur} EUR
+
+    👉 Merci de vérifier et me confirmer avant paiement.
+    """
+
+        whatsapp_url = f"https://wa.me/{support_number}?text={urllib.parse.quote(validation_message)}"
+
+        st.markdown("### 🔍 Validation de votre commande")
+
+        st.info(
+            "Avant de payer, envoyez votre commande à AfriPay pour vérification."
+        )
+
+        st.link_button(
+            "📲 Envoyer au support AfriPay",
+            whatsapp_url,
+            width=UI_WIDTH_STRETCH,
+        )
+
+
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
     working_plan = selected_plan_option or effective_plan or base_plan
 
