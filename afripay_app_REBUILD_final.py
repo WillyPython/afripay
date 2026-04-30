@@ -2108,6 +2108,8 @@ def render_account_box(user: dict | None) -> dict | None:
 def render_plan_cards(user: dict | None) -> None:
     st.markdown(f"### {tr('plan_title')}")
 
+
+
     if user:
         refreshed_user = get_user_by_id(int(user["id"]))
         if refreshed_user:
@@ -2219,20 +2221,19 @@ def render_plan_cards(user: dict | None) -> None:
         customer_phone = _get_user_phone()
         customer_ref = _get_user_reference()
 
-        lines = [
-            "Bonjour AfriPay Afrika,",
-            "",
-            "Je souhaite payer mon abonnement PREMIUM_PLUS.",
-            "",
-            f"Nom client : {customer_name}",
-            f"Telephone : {customer_phone or 'Non renseigne'}",
-            f"Reference client : {customer_ref or 'Non renseignee'}",
-            f"Formule choisie : PREMIUM_PLUS {duration_months} mois",
-            f"Montant abonnement : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF",
-            "",
-            "Merci de me communiquer la procedure de paiement a suivre.",
-        ]
-        return "\n".join(lines)
+        return f"""Bonjour AfriPay Afrika,
+
+    Je souhaite activer mon abonnement PREMIUM_PLUS.
+
+    Nom : {customer_name}
+    Téléphone : {customer_phone or 'Non renseigné'}
+    Référence : {customer_ref or 'Non renseignée'}
+
+    Formule : PREMIUM_PLUS {duration_months} mois
+    Montant : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF
+
+    Merci de m’envoyer les instructions de paiement.
+    """
 
     def _build_premium_plus_proof_message(
         duration_months: int,
@@ -2243,21 +2244,21 @@ def render_plan_cards(user: dict | None) -> None:
         customer_phone = _get_user_phone()
         customer_ref = _get_user_reference()
 
-        lines = [
-            "Bonjour AfriPay Afrika,",
-            "",
-            "Je vous transmets la preuve de paiement de mon abonnement PREMIUM_PLUS pour validation.",
-            "",
-            f"Nom client : {customer_name}",
-            f"Telephone : {customer_phone or 'Non renseigne'}",
-            f"Reference client : {customer_ref or 'Non renseignee'}",
-            f"Formule choisie : PREMIUM_PLUS {duration_months} mois",
-            f"Montant annonce : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF",
-            "",
-            "La capture ou preuve de paiement est jointe a ce message.",
-            "Merci de confirmer l'activation apres verification.",
-        ]
-        return "\n".join(lines)
+        return f"""Bonjour AfriPay Afrika,
+
+    Je confirme avoir effectué le paiement pour mon abonnement PREMIUM_PLUS.
+
+    Nom : {customer_name}
+    Téléphone : {customer_phone or 'Non renseigné'}
+    Référence : {customer_ref or 'Non renseignée'}
+
+    Formule : PREMIUM_PLUS {duration_months} mois
+    Montant payé : {amount_eur} EUR ≈ {format_xaf(amount_xaf)} XAF
+
+    La preuve de paiement est jointe à ce message.
+
+    Merci de valider mon abonnement.
+    """
 
     cards = [
         {
@@ -2527,6 +2528,8 @@ def render_plan_cards(user: dict | None) -> None:
             else "Demande PREMIUM_PLUS enregistrée : création de commande bloquée jusqu’à validation admin du paiement abonnement."
         )
         st.warning(pending_note)
+
+
 
 def render_kpis(user: dict | None) -> None:
     plan_label = get_sidebar_plan_label(user)
