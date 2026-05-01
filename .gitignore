@@ -34,4 +34,5 @@ Thumbs.db
 *_OLD.py
 test_*.py
 update_*.py
-venv/
+venv/ 
+ 

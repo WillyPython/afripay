@@ -3414,8 +3414,39 @@ def render_admin_payment_summary() -> None:
 
 def render_admin_payment_proofs() -> None:
     st.markdown("## 🧾 Preuves de paiement")
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stLinkButton"] a {
+            background-color: #14B8A6 !important;
+            color: #FFFFFF !important;
+            border: 1px solid #14B8A6 !important;
+            border-radius: 14px !important;
+            font-weight: 800 !important;
+            text-decoration: none !important;
+        }
+
+        div[data-testid="stLinkButton"] a:hover {
+            background-color: #0F766E !important;
+            color: #FFFFFF !important;
+            border-color: #0F766E !important;
+        }
+
+        div[data-testid="stLinkButton"] * {
+            color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     rows = get_all_orders(limit=200)
-    filtered = [row for row in rows if clean_text(row.get("payment_status") or "PENDING").upper() in {"PENDING", "PROOF_SENT", "PROOF_RECEIVED"}]
+    filtered = [
+        row for row in rows
+        if clean_text(row.get("payment_status") or "PENDING").upper()
+        in {"PENDING", "PROOF_SENT", "PROOF_RECEIVED"}
+    ]
+
     if not filtered:
         st.info("Aucune preuve de paiement à traiter.")
         return
@@ -3423,9 +3454,11 @@ def render_admin_payment_proofs() -> None:
     proof_sent_count = 0
     proof_received_count = 0
     proof_waiting_amount = 0
+
     for row in filtered:
         payment_status = clean_text(row.get("payment_status") or "PENDING").upper()
         amount = safe_int(row.get("total_xaf", 0))
+
         if payment_status == "PROOF_SENT":
             proof_sent_count += 1
             proof_waiting_amount += amount
@@ -3434,16 +3467,59 @@ def render_admin_payment_proofs() -> None:
             proof_waiting_amount += amount
 
     col1, col2, col3 = st.columns(3)
+
     with col1:
         st.metric("PROOF_SENT", proof_sent_count)
+
     with col2:
         st.metric("PROOF_RECEIVED", proof_received_count)
+
     with col3:
         st.metric("Montant à traiter", f"{format_xaf(proof_waiting_amount)} XAF")
         st.caption(f"≈ {format_eur(xaf_to_eur(proof_waiting_amount))} EUR")
 
     for row in filtered:
         render_admin_order_card(row)
+
+        client_name = clean_text(row.get("client_name") or "")
+        order_code = clean_text(row.get("order_code") or "")
+        amount_xaf = row.get("total_xaf") or 0
+        momo_provider = clean_text(row.get("momo_provider") or "NON DEFINI")
+
+        support_number = ""
+        try:
+            if admin_get_setting:
+                support_number = admin_get_setting("whatsapp_default") or ""
+        except Exception:
+            support_number = ""
+
+        support_number = "".join(ch for ch in str(support_number) if ch.isdigit())
+
+        if support_number:
+            message = f"""Bonjour,
+
+Votre paiement a bien été reçu.
+
+Commande : {order_code}
+Client : {client_name}
+Montant : {format_xaf(amount_xaf)} XAF
+Opérateur : {momo_provider}
+
+Statut : vérification en cours.
+
+AfriPay Afrika
+"""
+
+            whatsapp_url = (
+                f"https://wa.me/{support_number}"
+                f"?text={urllib.parse.quote(message)}"
+            )
+
+            st.link_button(
+                "📲 Notifier paiement reçu",
+                whatsapp_url,
+                width=UI_WIDTH_STRETCH,
+            )
 
 
 def render_admin_in_progress_orders() -> None:
