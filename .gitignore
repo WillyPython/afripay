@@ -36,3 +36,6 @@ test_*.py
 update_*.py
 venv/ 
  
+venv/
+__pycache__/
+*.pyc
