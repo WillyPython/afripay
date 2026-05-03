@@ -146,14 +146,14 @@ TRANSLATIONS = {
         "plan_pending_note": "Premium Plus non validé : création de commande bloquée tant que le paiement n'est pas confirmé.",
         "plan_blocked_note": "Votre option PREMIUM_PLUS est en attente de validation. Vous pouvez consulter les détails mais vous ne pouvez pas encore créer de commande.",
         "upgrade_title": "Passer à PREMIUM ou PREMIUM_PLUS",
-        "upgrade_intro": "Choisissez votre formule, envoyez votre demande sur WhatsApp, puis attendez la validation admin.",
+        "upgrade_intro": "Choisissez votre formule, envoyez votre demande à Afripay, puis attendez la validation admin.",
         "premium_btn": "Passer en PREMIUM",
         "premium_plus_btn": "Choisir PREMIUM_PLUS",
         "duration_label": "Durée active",
         "duration_help": "Choisissez 6 mois ou 12 mois. L'activation ne commence qu'après confirmation du paiement.",
-        "send_whatsapp": "Ouvrir WhatsApp",
+        "send_whatsapp": "Contactez Afripay",
         "payment_flow_title": "Flow AfriPay",
-        "payment_flow_text": "Panier → WhatsApp AfriPay → validation AfriPay → confirmation client → preuve de paiement → validation admin → activation/statut",
+        "payment_flow_text": "Panier → AfriPay → validation AfriPay → confirmation client → preuve de paiement → validation admin → activation/statut",
         "order_title": "Créer une commande",
         "order_type": "Type de commande",
         "order_type_product": "Produit",
@@ -175,7 +175,7 @@ TRANSLATIONS = {
         "premium_plus_blocked": "Création bloquée : PREMIUM_PLUS existe dans votre profil, mais il n'est pas encore validé. Attendez la confirmation admin.",
         "upgrade_unavailable_title": "Upgrade requis pour continuer",
         "upgrade_unavailable_text": "Votre quota FREE est épuisé. Pour continuer, vous devez passer à PREMIUM ou PREMIUM_PLUS.",
-        "order_blocked_upgrade_unavailable": "Création de commande bloquée : quota FREE épuisé et upgrade indisponible tant que WhatsApp n'est pas configuré côté plateforme.",
+        "order_blocked_upgrade_unavailable": "Création de commande bloquée : quota FREE épuisé et canal de validation Afripay indisponible côté plateforme.",
         "order_created": "Commande créée avec succès.",
         "order_summary": "Résumé commande",
         "order_code": "Code commande",
@@ -184,14 +184,14 @@ TRANSLATIONS = {
         "send_cart_whatsapp": "Envoyer le lien panier à AfriPay",
         "send_payment_proof": "Envoyer la preuve de paiement",
         "proof_intro": "Une fois la validation AfriPay reçue, envoyez votre preuve de paiement à l'équipe.",
-        "proof_unavailable_text": "WhatsApp n'est pas encore configuré côté plateforme. La commande est créée, mais les actions WhatsApp restent indisponibles pour le moment.",
+        "proof_unavailable_text": "Le canal de validation de Afripay n'est pas encore configuré côté plateforme. La commande est créée, mais les actions de validation Afripay restent indisponibles pour le moment.",
         "recent_orders": "Mes commandes récentes",
         "status": "Statut",
         "empty_orders": "Aucune commande pour le moment.",
         "login_success": "Compte chargé avec succès.",
         "login_error_phone": "Le numéro de téléphone est obligatoire.",
         "upgrade_cta_free": "Votre offre FREE est terminée. Passez à PREMIUM ou PREMIUM_PLUS.",
-        "configured_missing_whatsapp": "Aucun numéro WhatsApp configuré dans les settings.",
+        "configured_missing_whatsapp": "Aucun canal de validation Afripay configuré dans les settings.",
         "subscription_active_until": "Actif jusqu'au",
         "subscription_status": "Statut abonnement",
         "admin_login_title": "Espace administrateur",
@@ -246,14 +246,14 @@ TRANSLATIONS = {
         "plan_pending_note": "Premium Plus is pending: order creation remains blocked until payment is confirmed.",
         "plan_blocked_note": "Your PREMIUM_PLUS option is still pending validation. You can review it, but order creation is blocked for now.",
         "upgrade_title": "Upgrade to PREMIUM or PREMIUM_PLUS",
-        "upgrade_intro": "Choose your plan, send your request on WhatsApp, then wait for admin validation.",
+        "upgrade_intro": "Choose your plan, send your request to Afripay, then wait for admin validation.",
         "premium_btn": "Upgrade to PREMIUM",
         "premium_plus_btn": "Choose PREMIUM_PLUS",
         "duration_label": "Active period",
         "duration_help": "Choose 6 months or 12 months. Activation starts only after payment confirmation.",
-        "send_whatsapp": "Open WhatsApp",
+        "send_whatsapp": "Contact Afripay",
         "payment_flow_title": "AfriPay flow",
-        "payment_flow_text": "Cart link → AfriPay WhatsApp → AfriPay validation → client confirmation → payment proof → admin validation → activation/status",
+        "payment_flow_text": "Cart link → AfriPay → validation → client confirmation → payment proof → admin validation → activation/status",
         "order_title": "Create an order",
         "order_type": "Order type",
         "order_type_product": "Product",
@@ -275,7 +275,7 @@ TRANSLATIONS = {
         "premium_plus_blocked": "Creation blocked: PREMIUM_PLUS exists on your profile but is not validated yet. Please wait for admin confirmation.",
         "upgrade_unavailable_title": "Upgrade required to continue",
         "upgrade_unavailable_text": "Your FREE quota has been exhausted. To continue, you need to upgrade to PREMIUM or PREMIUM_PLUS.",
-        "order_blocked_upgrade_unavailable": "Order creation blocked: FREE quota is exhausted and upgrade is unavailable until platform WhatsApp is configured.",
+        "order_blocked_upgrade_unavailable": "Order creation blocked: FREE quota is exhausted and the Afripay validation channel is unavailable on the platform.",
         "order_created": "Order created successfully.",
         "order_summary": "Order summary",
         "order_code": "Order code",
@@ -284,14 +284,14 @@ TRANSLATIONS = {
         "send_cart_whatsapp": "Send cart link to AfriPay",
         "send_payment_proof": "Send payment proof",
         "proof_intro": "Once AfriPay validates the cart, send your payment proof to the team.",
-        "proof_unavailable_text": "WhatsApp is not configured on the platform yet. The order was created, but WhatsApp actions are not available for now.",
+        "proof_unavailable_text": "The Afripay validation channel is not configured on the platform yet. The order was created, but validations actions are not available for now.",
         "recent_orders": "My recent orders",
         "status": "Status",
         "empty_orders": "No orders yet.",
         "login_success": "Account loaded successfully.",
         "login_error_phone": "Phone number is required.",
         "upgrade_cta_free": "Your FREE offer is exhausted. Upgrade to PREMIUM or PREMIUM_PLUS.",
-        "configured_missing_whatsapp": "No WhatsApp number configured in settings.",
+        "configured_missing_whatsapp": "No Afripay validation channel configured in settings.",
         "subscription_active_until": "Active until",
         "subscription_status": "Subscription status",
         "admin_login_title": "Admin area",
@@ -2443,7 +2443,7 @@ def render_plan_cards(user: dict | None) -> None:
         )
 
         st.success(
-            "Demande PREMIUM_PLUS enregistrée : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+            "Demande PREMIUM_PLUS enregistrée : veuillez envoyer votre preuve de paiement au support AfriPay. "
             "Votre abonnement sera activé après validation administrative."
         )
 
@@ -2485,13 +2485,13 @@ def render_plan_cards(user: dict | None) -> None:
 
         if not central_whatsapp_number:
             st.success(
-                "Demande PREMIUM_PLUS enregistrée. Veuillez contacter le support AfriPay via WhatsApp pour finaliser le paiement abonnement."
+                "Demande PREMIUM_PLUS enregistrée. Veuillez contacter le support AfriPay pour finaliser le paiement abonnement."
             )
         else:
             st.markdown(
                 """
                 <div class="af-small" style="margin-top:8px; margin-bottom:12px; line-height:1.6;">
-                    Utilisez les boutons ci-dessous pour contacter le support central AfriPay via WhatsApp
+                    Utilisez les boutons ci-dessous pour contacter le support central AfriPay
                     avec un message prérempli, professionnel et prêt à l’envoi.
                 </div>
                 """,
@@ -2515,7 +2515,7 @@ def render_plan_cards(user: dict | None) -> None:
                 )
 
             st.caption(
-                "Le routage WhatsApp utilise exclusivement le numéro central configuré dans les settings."
+                "Le canal de validation Afripay utilise exclusivement le numéro central configuré dans les settings."
             )
 
     elif selected_plan_option == PLAN_FREE:
@@ -2764,24 +2764,30 @@ def render_order_form(user: dict | None) -> None:
 
     if selected_plan_option == PLAN_PREMIUM_PLUS and not premium_plus_active:
         st.success(
-            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
-            "Votre abonnement sera activé après validation administrative."
+            (
+                "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+                "Votre abonnement sera activé après validation administrative."
+            )
             if get_language() == "fr"
-            else
-            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
-            "Your subscription will be activated after admin validation."
+            else (
+                "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+                "Your subscription will be activated after admin validation."
+            )
         )
         st.session_state["premium_page_open"] = True
         return
 
     if premium_plus_pending:
         st.success(
-            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
-            "Votre abonnement sera activé après validation administrative."
+            (
+                "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+                "Votre abonnement sera activé après validation administrative."
+            )
             if get_language() == "fr"
-            else
-            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
-            "Your subscription will be activated after admin validation."
+            else (
+                "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+                "Your subscription will be activated after admin validation."
+            )
         )
         st.session_state["premium_page_open"] = True
         return
@@ -2792,8 +2798,7 @@ def render_order_form(user: dict | None) -> None:
                 st.warning(
                     "Votre quota FREE est épuisé. Choisissez maintenant PREMIUM ou PREMIUM_PLUS pour continuer."
                     if get_language() == "fr"
-                    else
-                    "Your FREE quota is exhausted. Please choose PREMIUM or PREMIUM_PLUS to continue."
+                    else "Your FREE quota is exhausted. Please choose PREMIUM or PREMIUM_PLUS to continue."
                 )
             else:
                 st.success(tr("free_block_limit_no_whatsapp"))
@@ -2804,8 +2809,7 @@ def render_order_form(user: dict | None) -> None:
                 st.warning(
                     "Le quota FREE est épuisé. Pour continuer, choisissez PREMIUM ou PREMIUM_PLUS."
                     if get_language() == "fr"
-                    else
-                    "The FREE quota is exhausted. To continue, choose PREMIUM or PREMIUM_PLUS."
+                    else "The FREE quota is exhausted. To continue, choose PREMIUM or PREMIUM_PLUS."
                 )
             else:
                 st.success(tr("free_block_limit_no_whatsapp"))
@@ -2824,7 +2828,7 @@ def render_order_form(user: dict | None) -> None:
     }
 
     with st.form("create_order_form"):
-        st.radio(
+        selected_order_type = st.radio(
             tr("order_type"),
             options=[tr("order_type_product"), tr("order_type_service")],
             horizontal=True,
@@ -2834,8 +2838,33 @@ def render_order_form(user: dict | None) -> None:
         col1, col2 = st.columns(2)
 
         with col1:
-            site_name = st.text_input(tr("site_name"))
-            product_url = st.text_input(tr("product_url"))
+            site_name = st.text_input(
+                "Nom du vendeur / fournisseur"
+                if get_language() == "fr"
+                else "Seller / supplier name",
+                placeholder=(
+                    "Ex : Amazon, Temu, Alibaba, AliExpress, Shein..."
+                    if get_language() == "fr"
+                    else "Ex: Amazon, Temu, Alibaba, AliExpress, Shein..."
+                ),
+            )
+
+            product_url = st.text_input(
+                "Lien du panier à coller ICI"
+                if get_language() == "fr"
+                else "Paste cart link HERE",
+                placeholder=(
+                    "Collez ici le lien exact du panier"
+                    if get_language() == "fr"
+                    else "Paste the exact cart link here"
+                ),
+                help=(
+                    "🎥 Voir la vidéo dans la sidebar en cas de doute."
+                    if get_language() == "fr"
+                    else "🎥 Watch the video in the sidebar if in doubt."
+                ),
+            )
+
             product_title = st.text_input(tr("product_title"))
 
             merchant_total_eur = st.number_input(
@@ -2866,12 +2895,41 @@ def render_order_form(user: dict | None) -> None:
 
     if not submitted:
         return
+    
+    is_product_order = selected_order_type == tr("order_type_product")  
 
-    if not clean_text(site_name):
+    cleaned_site_name = clean_text(site_name)
+    cleaned_product_url = clean_text(product_url)
+
+    if not cleaned_site_name:
         ui_info(
-            "Le nom du site / marchand est obligatoire."
+            "Le nom du vendeur / fournisseur est obligatoire."
             if get_language() == "fr"
-            else "Merchant / site name is required."
+            else "Seller / supplier name is required."
+        )
+        return
+
+    if cleaned_site_name.lower().startswith(("http://", "https://", "www.")):
+        ui_info(
+            "Ne collez pas le lien dans le champ vendeur / fournisseur. Collez le lien dans : Lien du panier à coller ICI."
+            if get_language() == "fr"
+            else "Do not paste the link in the seller / supplier field. Paste it in: Paste cart link HERE."
+        )
+        return
+
+    if not cleaned_product_url:
+        ui_info(
+            "Le lien du panier est obligatoire. Collez-le dans le champ : Lien du panier à coller ICI."
+            if get_language() == "fr"
+            else "The cart link is required. Paste it in the field: Paste cart link HERE."
+        )
+        return
+
+    if not cleaned_product_url.lower().startswith(("http://", "https://", "www.")):
+        ui_info(
+            "Le lien du panier doit être un lien valide."
+            if get_language() == "fr"
+            else "The cart link must be a valid link."
         )
         return
 
@@ -2891,25 +2949,21 @@ def render_order_form(user: dict | None) -> None:
         )
         return
 
-    if not clean_text(forwarder_name):
+    if is_product_order and not clean_text(forwarder_name):
         ui_info(
-            "Le nom du transitaire / agent / agence est obligatoire pour créer une commande."
+            "Le nom du transitaire / agent / agence est obligatoire."
             if get_language() == "fr"
-            else "The freight forwarder / agent / agency name is required."
+            else "Freight forwarder / agent / agency name is required."
         )
         return
 
-    if not clean_text(delivery_address):
+    if is_product_order and not clean_text(delivery_address):
         ui_info(
-            "L'adresse du transitaire / agence de réception est obligatoire pour créer une commande."
+            "L'adresse du transitaire / agence de réception est obligatoire."
             if get_language() == "fr"
-            else "The freight forwarder / delivery address is required."
+            else "Freight forwarder / delivery address is required."
         )
         return
-
-    # ============================================
-    # 📲 VALIDATION LIEN MARCHAND VIA WHATSAPP
-    # ============================================
 
     support_number = ""
 
@@ -2924,41 +2978,85 @@ def render_order_form(user: dict | None) -> None:
     if support_number:
         validation_message = f"""Bonjour AfriPay,
 
-    Je souhaite valider cette commande avant paiement :
+Je souhaite valider cette commande avant paiement :
 
-    🔗 Lien : {clean_text(product_url)}
-    🛒 Produit : {clean_text(product_title)}
-    💰 Montant : {merchant_total_eur} EUR
+🏪 Vendeur / fournisseur : {cleaned_site_name}
+🔗 Lien du panier : {cleaned_product_url}
+🛒 Produit : {clean_text(product_title)}
+💰 Montant : {merchant_total_eur} EUR
 
-    👉 Merci de vérifier et me confirmer avant paiement.
-    """
+👉 Merci de vérifier et me confirmer avant paiement.
+"""
 
         whatsapp_url = f"https://wa.me/{support_number}?text={urllib.parse.quote(validation_message)}"
 
         st.markdown("### 🔍 Validation de votre commande")
 
-        st.info(
-            "Avant de payer, envoyez votre commande à AfriPay pour vérification."
+        st.markdown(
+            """
+            <div style="
+                background:#2563EB;
+                color:#FFFFFF;
+                padding:16px 18px;
+                border-radius:14px;
+                font-weight:800;
+                font-size:1rem;
+                line-height:1.6;
+                margin-top:12px;
+                margin-bottom:14px;
+                text-align:center;
+                box-shadow:0 8px 18px rgba(37, 99, 235, 0.22);
+            ">
+                Après création de commande avec succès,<br>
+                envoyez votre commande à AfriPay pour vérification<br>
+                via le bouton ci-dessous.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        st.link_button(
-            "📲 Envoyer au support AfriPay",
-            whatsapp_url,
-            width=UI_WIDTH_STRETCH,
+        order_cta_label = (
+            "📲 Envoyer ma commande à AfriPay"
+            if get_language() == "fr"
+            else "📲 Send my order to AfriPay"
         )
 
-
+        st.markdown(
+            f"""
+            <a href="{whatsapp_url}" target="_blank" style="text-decoration:none;">
+                <div style="
+                    background:#25D366;
+                    color:#FFFFFF;
+                    padding:16px 18px;
+                    border-radius:14px;
+                    text-align:center;
+                    font-weight:900;
+                    font-size:1.05rem;
+                    margin-top:10px;
+                    margin-bottom:18px;
+                    box-shadow:0 8px 18px rgba(37, 211, 102, 0.30);
+                ">
+                    {order_cta_label}
+            </div>
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )     
+        
     estimated_xaf = estimate_merchant_total_xaf(merchant_total_eur)
     working_plan = selected_plan_option or effective_plan or base_plan
 
     if working_plan == PLAN_PREMIUM_PLUS and not is_premium_plus_active(user):
         st.success(
-            "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
-            "Votre abonnement sera activé après validation administrative."
+            (
+                "Activation PREMIUM_PLUS en attente : veuillez envoyer votre preuve de paiement au support AfriPay via WhatsApp. "
+                "Votre abonnement sera activé après validation administrative."
+            )
             if get_language() == "fr"
-            else
-            "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
-            "Your subscription will be activated after admin validation."
+            else (
+                "PREMIUM_PLUS activation pending: please send your proof of payment to AfriPay support via WhatsApp. "
+                "Your subscription will be activated after admin validation."
+            )
         )
         st.session_state["premium_page_open"] = True
         return
@@ -2971,8 +3069,7 @@ def render_order_form(user: dict | None) -> None:
                 st.warning(
                     "Le quota FREE est épuisé. Passez maintenant à PREMIUM ou PREMIUM_PLUS pour continuer."
                     if get_language() == "fr"
-                    else
-                    "The FREE quota is exhausted. Please move to PREMIUM or PREMIUM_PLUS to continue."
+                    else "The FREE quota is exhausted. Please move to PREMIUM or PREMIUM_PLUS to continue."
                 )
                 st.session_state["premium_page_open"] = True
             else:
@@ -2997,8 +3094,8 @@ def render_order_form(user: dict | None) -> None:
             client_name=clean_text(user.get("name") or st.session_state.get("client_name", "")),
             client_phone=clean_text(user.get("phone") or st.session_state.get("client_phone", "")),
             client_email=clean_text(user.get("email") or st.session_state.get("client_email", "")),
-            site_name=clean_text(site_name),
-            product_url=clean_text(product_url),
+            site_name=cleaned_site_name,
+            product_url=cleaned_product_url,
             product_title=clean_text(product_title),
             product_specs=clean_text(product_specs),
             product_price_eur=float(merchant_total_eur or 0),
@@ -3087,32 +3184,65 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
 
     with btn_col1:
         if cart_url:
-            st.link_button(
-                "📲 Envoyer le panier sur WhatsApp"
+            cart_label = (
+                "📦 Envoyer le panier à AfriPay"
                 if get_language() == "fr"
-                else "📲 Send cart on WhatsApp",
-                cart_url,
-                width=UI_WIDTH_STRETCH,
+                else "📦 Send cart to AfriPay"
+            )
+            st.markdown(
+                f"""
+                <a href="{cart_url}" target="_blank" style="text-decoration:none;">
+                    <div style="
+                        background:#25D366;
+                        color:#FFFFFF;
+                        padding:14px 16px;
+                        border-radius:14px;
+                        text-align:center;
+                        font-weight:900;
+                        font-size:1rem;
+                        box-shadow:0 6px 14px rgba(37, 211, 102, 0.30);
+                    ">
+                        {cart_label}
+                    </div>
+                </a>
+                """,
+                unsafe_allow_html=True,
             )
 
     with btn_col2:
         if proof_url:
-            st.link_button(
-                "📲 Envoyer la preuve de paiement"
+            proof_label = (
+                "💳 Envoyer la preuve de paiement"
                 if get_language() == "fr"
-                else "📲 Send payment proof",
-                proof_url,
-                width=UI_WIDTH_STRETCH,
+                else "💳 Send payment proof"
+            )
+            st.markdown(
+                f"""
+                <a href="{proof_url}" target="_blank" style="text-decoration:none;">
+                    <div style="
+                        background:#2563EB;
+                        color:#FFFFFF;
+                        padding:14px 16px;
+                        border-radius:14px;
+                        text-align:center;
+                        font-weight:900;
+                        font-size:1rem;
+                        box-shadow:0 6px 14px rgba(37, 99, 235, 0.30);
+                    ">
+                        {proof_label}
+                    </div>
+                </a>
+                """,
+                unsafe_allow_html=True,
             )
 
     st.caption(
         tr("proof_intro")
         if tr("proof_intro") != "proof_intro"
         else (
-            "Les validations finales de commande et de paiement sont traitées via le support WhatsApp AfriPay."
+            "Les validations finales de commande et de paiement sont traitées par le support AfriPay."
             if get_language() == "fr"
-            else
-            "Final order and payment validations are handled through AfriPay WhatsApp support."
+            else "Final order and payment validations are handled by AfriPay support."
         )
     )
 
