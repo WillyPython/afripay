@@ -3121,6 +3121,24 @@ def render_order_success(user: dict | None, order: dict | None) -> None:
         return
 
     ui_success(tr("order_created"))
+    new_order_label = (
+        "➕ Nouvelle commande"
+        if get_language() == "fr"
+        else "➕ New order"
+    )
+
+    new_order_col1, new_order_col2 = st.columns([1, 2])
+
+    with new_order_col1:
+        if st.button(
+            new_order_label,
+            key="new_order_safe_button",
+            width=UI_WIDTH_STRETCH,
+            type="primary",
+        ):
+            st.session_state.pop("last_order_code", None)
+            st.session_state.pop("order_created", None)
+            st.rerun()
     st.markdown(f"#### {tr('order_summary')}")
 
     total_xaf = safe_int(order.get("total_xaf", 0))
@@ -3454,6 +3472,18 @@ def render_admin_order_card(row: dict) -> None:
 
 def render_admin_dashboard() -> None:
     st.markdown("## 🛠️ Dashboard Administrateur")
+    col_left, col_right = st.columns([6, 1])
+
+    with col_right:
+        if st.button(
+            "👤 Espace client",
+            key="admin_to_client_btn",
+            use_container_width=True,
+            type="secondary",
+        ):
+            st.session_state["is_admin"] = False
+            st.session_state["admin_view"] = None  # 🔥 RESET NAV
+            st.rerun()
     kpis = get_admin_kpi_data()
 
     top1, top2, top3, top4, top5 = st.columns(5)
