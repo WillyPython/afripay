@@ -81,6 +81,7 @@ SUPPORTED_COUNTRIES = ["CM", "CI", "CD", "GA", "NG", "KE", "MZ"]
 PLAN_DURATION_OPTIONS = [6, 12]
 
 ADMIN_VIEW_DASHBOARD = "dashboard"
+ADMIN_VIEW_ORDERS = "orders"
 ADMIN_VIEW_PAYMENT_SUMMARY = "payment_summary"
 ADMIN_VIEW_PAYMENT_PROOFS = "payment_proofs"
 ADMIN_VIEW_IN_PROGRESS = "in_progress"
@@ -1723,6 +1724,10 @@ def render_sidebar(user: dict | None) -> None:
             st.session_state["admin_view"] = ADMIN_VIEW_DASHBOARD
             st.session_state["admin_filter"] = "ALL"
 
+        if st.sidebar.button("📦 Toutes les commandes", width=UI_WIDTH_STRETCH):
+            st.session_state["admin_view"] = ADMIN_VIEW_ORDERS
+            st.session_state["admin_filter"] = "ALL"
+
         if st.sidebar.button("💰 Récapitulatif paiement", width=UI_WIDTH_STRETCH):
             st.session_state["admin_view"] = ADMIN_VIEW_PAYMENT_SUMMARY
             st.session_state["admin_filter"] = "ALL"
@@ -3283,6 +3288,95 @@ def render_user_orders(user: dict | None) -> None:
         st.info(tr("empty_orders"))
         return
 
+    st.markdown("""
+<style>
+.recent-order-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+.recent-order-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+.recent-order-code {
+    font-size: 15px;
+    font-weight: 800;
+    color: #111827;
+}
+.recent-order-site {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 3px;
+}
+.recent-order-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 10px 0 12px 0;
+}
+.recent-order-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+.recent-order-metric {
+    background: #f9fafb;
+    border-radius: 14px;
+    padding: 10px 12px;
+}
+.recent-order-label {
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+.recent-order-value {
+    font-size: 13px;
+    font-weight: 800;
+    color: #111827;
+}
+.recent-order-badge {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+@media (max-width: 700px) {
+    .recent-order-top {
+        flex-direction: column;
+    }
+    .recent-order-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
+    status_labels = {
+        "CREEE": "Créée",
+        "PAYEE": "Payée",
+        "EN_COURS": "En cours",
+        "LIVREE": "Livrée",
+        "ANNULEE": "Annulée",
+    }
+
+    payment_labels = {
+        "PENDING": "Paiement en attente",
+        "PROOF_SENT": "Preuve envoyée",
+        "PROOF_RECEIVED": "Preuve reçue",
+        "CONFIRMED": "Paiement confirmé",
+        "REJECTED": "Paiement rejeté",
+    }
+
     for order in orders:
         order_code = clean_text(order.get("order_code") or "-")
         site_name = clean_text(order.get("site_name") or "-")
@@ -3291,18 +3385,54 @@ def render_user_orders(user: dict | None) -> None:
         total_xaf = _round_xaf(order.get("total_xaf") or 0)
         created_at = format_date_display(order.get("created_at"))
 
-        order_status = clean_text(order.get("order_status") or "CREEE")
-        payment_status = clean_text(order.get("payment_status") or "PENDING")
-        status_label = get_order_status_label(order_status)
+        order_status = clean_text(
+            order.get("order_status") or order.get("status") or "CREEE"
+        ).upper()
+        payment_status = clean_text(order.get("payment_status") or "PENDING").upper()
 
-        with st.container(border=True):
-            st.markdown(f"**🧾 Commande #{order_code}**")
-            st.write(f"🛒 {site_name}")
-            st.write(f"📦 {product_title}")
-            st.write(f"💰 {format_xaf(total_xaf)} XAF")
-            st.write(f"📅 {created_at}")
-            st.write(f"🚀 Statut : {status_label}")
-            st.write(f"💳 Paiement : {payment_status}")
+        order_status_label = status_labels.get(order_status, order_status)
+        payment_status_label = payment_labels.get(payment_status, payment_status)
+
+        order_bg, order_fg = ORDER_STATUS_COLORS.get(
+            order_status,
+            ("#E5E7EB", "#111827"),
+        )
+
+        payment_bg, payment_fg = ORDER_STATUS_COLORS.get(
+            payment_status,
+            ("#F3F4F6", "#111827"),
+        )
+
+        card_html = f"""<div class="recent-order-card">
+<div class="recent-order-top">
+<div>
+<div class="recent-order-code">Commande {order_code}</div>
+<div class="recent-order-site">{site_name}</div>
+</div>
+<div>
+<span class="recent-order-badge" style="background:{order_bg}; color:{order_fg};">{order_status_label}</span>
+</div>
+</div>
+<div class="recent-order-title">{product_title}</div>
+<div class="recent-order-grid">
+<div class="recent-order-metric">
+<div class="recent-order-label">Montant total</div>
+<div class="recent-order-value">{format_xaf(total_xaf)}</div>
+</div>
+<div class="recent-order-metric">
+<div class="recent-order-label">Paiement</div>
+<div class="recent-order-value">
+<span class="recent-order-badge" style="background:{payment_bg}; color:{payment_fg};">{payment_status_label}</span>
+</div>
+</div>
+<div class="recent-order-metric">
+<div class="recent-order-label">Date</div>
+<div class="recent-order-value">{created_at}</div>
+</div>
+</div>
+</div>"""
+
+        st.markdown(card_html, unsafe_allow_html=True)
 
 def render_orders_table(user: dict | None) -> None:
     st.markdown(f"### {tr('recent_orders')}")
@@ -3343,7 +3473,6 @@ def render_orders_table(user: dict | None) -> None:
             """,
             unsafe_allow_html=True,
         )
-
 
 def render_flow_block() -> None:
     st.markdown(f"### {tr('payment_flow_title')}")
@@ -3525,6 +3654,68 @@ def render_admin_dashboard() -> None:
     for row in rows:
         render_admin_order_card(row)
 
+def render_admin_orders_view() -> None:
+    st.markdown("## 📦 Toutes les commandes")
+
+    rows = get_all_orders(limit=300)
+
+    if not rows:
+        st.info("Aucune commande trouvée.")
+        return
+
+    # 🔍 Filtres
+    col1, col2 = st.columns(2)
+
+    with col1:
+        status_filter = st.selectbox(
+            "Filtrer par statut commande",
+            ["ALL", "CREEE", "PAYEE", "EN_COURS", "LIVREE", "ANNULEE"],
+        )
+
+    with col2:
+        payment_filter = st.selectbox(
+            "Filtrer par paiement",
+            ["ALL", "PENDING", "PROOF_SENT", "PROOF_RECEIVED", "CONFIRMED", "REJECTED"],
+        )
+
+    # 🔎 Recherche
+    search = st.text_input("🔎 Rechercher (code, client, téléphone, site)")
+
+    filtered = []
+
+    for row in rows:
+        order_status = clean_text(row.get("order_status") or "").upper()
+        payment_status = clean_text(row.get("payment_status") or "").upper()
+
+        if status_filter != "ALL" and order_status != status_filter:
+            continue
+
+        if payment_filter != "ALL" and payment_status != payment_filter:
+            continue
+
+        if search:
+            text = " ".join(
+                [
+                    clean_text(row.get("order_code")),
+                    clean_text(row.get("client_name")),
+                    clean_text(row.get("client_phone")),
+                    clean_text(row.get("site_name")),
+                ]
+            ).lower()
+
+            if search.lower() not in text:
+                continue
+
+        filtered.append(row)
+
+    st.markdown(f"### Résultats : {len(filtered)}")
+
+    if not filtered:
+        st.warning("Aucun résultat avec ces filtres.")
+        return
+
+    for row in filtered:
+        render_admin_order_card(row)
 
 def render_admin_payment_summary() -> None:
     st.markdown("## 💰 Récapitulatif paiement")
@@ -3998,19 +4189,120 @@ def render_admin_current_view() -> None:
         render_admin_refunds()
     elif view == ADMIN_VIEW_PREMIUM_PLUS:
         render_admin_premium_plus()
+    elif view == ADMIN_VIEW_ORDERS:
+        render_admin_orders_view()
     else:
         render_admin_dashboard()
+
 
 
 def inject_admin_dark_mode():
     st.markdown(
         """
     <style>
-    .stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],[data-testid="stMainBlockContainer"] { background: #0F172A !important; color: #E2E8F0 !important; }
-    section[data-testid="stSidebar"] { background: #020B2D !important; }
-    h1,h2,h3,h4,h5,h6,p,span,label { color: #E2E8F0 !important; }
-    div[data-baseweb="input"] > div,div[data-baseweb="textarea"] > div,.stTextInput input,.stTextArea textarea,.stNumberInput input { background: #1E293B !important; color: #F8FAFC !important; border: 1px solid #334155 !important; border-radius: 10px !important; }
-    .stButton > button { background: linear-gradient(135deg, #1ABC9C, #16A085) !important; color: white !important; border: none !important; border-radius: 12px !important; font-weight: 600; }
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"] {
+        background: #0F172A !important;
+        color: #E2E8F0 !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #020B2D !important;
+    }
+
+    h1,h2,h3,h4,h5,h6,p,span,label {
+        color: #E2E8F0 !important;
+    }
+
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div,
+    .stTextInput input,
+    .stTextArea textarea,
+    .stNumberInput input {
+        background: #1E293B !important;
+        color: #F8FAFC !important;
+        border: 1px solid #334155 !important;
+        border-radius: 10px !important;
+    }
+
+    div[data-testid="stVerticalBlock"],
+    div[data-testid="stHorizontalBlock"],
+    div[data-testid="column"],
+    div[data-testid="stExpander"],
+    div[data-testid="stForm"],
+    section.main > div {
+        background: transparent !important;
+    }
+
+    details {
+        background: #1E293B !important;
+        border: 1px solid #334155 !important;
+        border-radius: 12px !important;
+    }
+
+    div[data-testid="metric-container"] {
+        background: linear-gradient(145deg, #1E293B, #0F172A) !important;
+        border: 1px solid #334155 !important;
+        border-radius: 14px !important;
+        padding: 12px !important;
+    }
+
+    .stButton > button {
+        background: linear-gradient(135deg, #1ABC9C, #16A085) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+    }
+
+    .stButton > button:disabled {
+        background: #334155 !important;
+        color: #CBD5E1 !important;
+        opacity: 1 !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(1) > button {
+        background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(2) > button {
+        background: linear-gradient(135deg, #7C3AED, #5B21B6) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(3) > button {
+        background: linear-gradient(135deg, #F59E0B, #D97706) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(4) > button {
+        background: linear-gradient(135deg, #0EA5E9, #0369A1) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(5) > button {
+        background: linear-gradient(135deg, #10B981, #047857) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(6) > button {
+        background: linear-gradient(135deg, #EF4444, #B91C1C) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(7) > button {
+        background: linear-gradient(135deg, #64748B, #334155) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(8) > button {
+        background: linear-gradient(135deg, #F43F5E, #BE123C) !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton:nth-of-type(9) > button {
+        background: linear-gradient(135deg, #EAB308, #CA8A04) !important;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.08);
+    }
     </style>
     """,
         unsafe_allow_html=True,
