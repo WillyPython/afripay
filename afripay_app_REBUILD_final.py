@@ -3685,6 +3685,12 @@ def render_admin_refunds() -> None:
 
 def render_admin_premium_plus() -> None:
     st.markdown("## 👑 PREMIUM_PLUS")
+    if st.session_state.get("last_whatsapp_url"):
+        st.link_button(
+            "📲 Envoyer la notification WhatsApp",
+            st.session_state["last_whatsapp_url"],
+            width="stretch",
+        )
 
     st.markdown(
         """
@@ -3855,9 +3861,28 @@ def render_admin_premium_plus() -> None:
                                 user_id=user_id,
                                 duration=duration,
                             )
+
                             st.success(
                                 "Abonnement PREMIUM_PLUS validé avec succès."
                             )
+
+                            whatsapp_phone = _normalize_phone_for_whatsapp(phone)
+
+                            if whatsapp_phone:
+                                message = _build_activation_whatsapp_message(client_name)
+                                whatsapp_url = (
+                                    f"https://wa.me/{whatsapp_phone}"
+                                    f"?text={urllib.parse.quote(message)}"
+                                )
+
+                                # 🔥 stockage pour affichage après rerun
+                                st.session_state["last_whatsapp_url"] = whatsapp_url
+
+                            else:
+                                st.warning(
+                                    "Abonnement validé, mais numéro client invalide pour WhatsApp."
+                                )
+
                             st.rerun()
                 else:
                     st.caption("Validation admin non requise.")
